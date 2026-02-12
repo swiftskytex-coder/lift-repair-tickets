@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🛠️ Система заявок на ремонт лифтов</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --success-color: #10b981;
+            --warning-color: #f59e0b;
+            --danger-color: #ef4444;
+            --info-color: #3b82f6;
+        }
+        
+        body {
+            background-color: #f3f4f6;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        
+        .navbar {
+            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .stat-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        
+        .stat-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+        
+        .bg-gradient-primary { background: linear-gradient(135deg, #3b82f6, #1d4ed8); }
+        .bg-gradient-success { background: linear-gradient(135deg, #10b981, #059669); }
+        .bg-gradient-warning { background: linear-gradient(135deg, #f59e0b, #d97706); }
+        .bg-gradient-danger { background: linear-gradient(135deg, #ef4444, #dc2626); }
+        
+        .ticket-card {
+            background: white;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border-left: 4px solid transparent;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        
+        .ticket-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            transform: translateX(4px);
+        }
+        
+        .ticket-card.priority-срочный { border-left-color: #dc2626; }
+        .ticket-card.priority-высокий { border-left-color: #f59e0b; }
+        .ticket-card.priority-обычный { border-left-color: #3b82f6; }
+        .ticket-card.priority-низкий { border-left-color: #6b7280; }
+        
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .status-новая { background: #dbeafe; color: #1e40af; }
+        .status-в-работе { background: #fef3c7; color: #92400e; }
+        .status-выполнена { background: #d1fae5; color: #065f46; }
+        .status-отменена { background: #fee2e2; color: #991b1b; }
+        
+        .priority-badge {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        
+        .priority-срочный { background: #fee2e2; color: #991b1b; }
+        .priority-высокий { background: #fef3c7; color: #92400e; }
+        .priority-обычный { background: #dbeafe; color: #1e40af; }
+        .priority-низкий { background: #f3f4f6; color: #4b5563; }
+        
+        .quick-action-btn {
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+        
+        .quick-action-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        
+        .section-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #1f2937;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Навигация -->
+    <nav class="navbar navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand d-flex align-items-center gap-2" href="/">
+                <i class="bi bi-tools"></i>
+                <span>Система заявок на ремонт лифтов</span>
+            </a>
+            <div class="d-flex gap-3">
+                <a href="/new-ticket" class="btn btn-light btn-sm">
+                    <i class="bi bi-plus-lg"></i> Новая заявка
+                </a>
+                <a href="/tickets" class="btn btn-outline-light btn-sm">
+                    <i class="bi bi-list"></i> Все заявки
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid py-4">
+        <!-- Статистика -->
+        <div class="row mb-4">
+            <div class="col-md-3 mb-3">
+                <div class="stat-card d-flex align-items-center gap-3">
+                    <div class="stat-icon bg-gradient-primary text-white">
+                        <i class="bi bi-inbox"></i>
+                    </div>
+                    <div>
+                        <div class="text-muted small">Всего заявок</div>
+                        <div class="h3 mb-0">{{ stats.total }}</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="stat-card d-flex align-items-center gap-3">
+                    <div class="stat-icon bg-gradient-warning text-white">
+                        <i class="bi bi-clock"></i>
+                    </div>
+                    <div>
+                        <div class="text-muted small">Новых</div>
+                        <div class="h3 mb-0">{{ stats.new }}</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="stat-card d-flex align-items-center gap-3">
+                    <div class="stat-icon bg-gradient-info text-white">
+                        <i class="bi bi-gear"></i>
+                    </div>
+                    <div>
+                        <div class="text-muted small">В работе</div>
+                        <div class="h3 mb-0">{{ stats.in_progress }}</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="stat-card d-flex align-items-center gap-3">
+                    <div class="stat-icon bg-gradient-success text-white">
+                        <i class="bi bi-check-circle"></i>
+                    </div>
+                    <div>
+                        <div class="text-muted small">Выполнено</div>
+                        <div class="h3 mb-0">{{ stats.completed }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Быстрые действия -->
+            <div class="col-lg-3 mb-4">
+                <div class="section-title">
+                    <i class="bi bi-lightning-charge"></i>
+                    Быстрые действия
+                </div>
+                
+                <div class="d-grid gap-2">
+                    <a href="/new-ticket" class="btn btn-primary quick-action-btn">
+                        <i class="bi bi-telephone-plus"></i>
+                        Принять заявку по телефону
+                    </a>
+                    
+                    <a href="/tickets?status=новая" class="btn btn-warning quick-action-btn">
+                        <i class="bi bi-inbox"></i>
+                        Новые заявки ({{ stats.new }})
+                    </a>
+                    
+                    <a href="/tickets?priority=срочный" class="btn btn-danger quick-action-btn">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        Срочные заявки
+                    </a>
+                    
+                    <a href="/tickets" class="btn btn-outline-secondary quick-action-btn">
+                        <i class="bi bi-search"></i>
+                        Поиск заявок
+                    </a>
+                </div>
+
+                <!-- Распределение по приоритетам -->
+                <div class="mt-4">
+                    <div class="section-title">
+                        <i class="bi bi-bar-chart"></i>
+                        По приоритетам
+                    </div>
+                    <div class="bg-white rounded-3 p-3">
+                        {% for priority, count in stats.by_priority.items() %}
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="priority-badge priority-{{ priority }}">{{ priority }}</span>
+                            <span class="fw-bold">{{ count }}</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- Распределение по источникам -->
+                <div class="mt-4">
+                    <div class="section-title">
+                        <i class="bi bi-globe"></i>
+                        По источникам
+                    </div>
+                    <div class="bg-white rounded-3 p-3">
+                        {% for source, count in stats.by_source.items() %}
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="text-muted small">
+                                {% if source == 'phone' %}📞 Телефон
+                                {% elif source == 'mobile_app' %}📱 Мобильное приложение
+                                {% elif source == 'operator' %}👨‍💻 Оператор
+                                {% else %}{{ source }}
+                                {% endif %}
+                            </span>
+                            <span class="fw-bold">{{ count }}</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Последние заявки -->
+            <div class="col-lg-9">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="section-title mb-0">
+                        <i class="bi bi-clock-history"></i>
+                        Последние заявки
+                    </div>
+                    <a href="/tickets" class="btn btn-sm btn-outline-primary">
+                        Все заявки <i class="bi bi-arrow-right"></i>
+                    </a>
+                </div>
+
+                {% if tickets %}
+                    {% for ticket in tickets %}
+                    <div class="ticket-card priority-{{ ticket.priority }}" onclick="window.location.href='/ticket/{{ ticket.id }}'">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <div>
+                                <span class="fw-bold text-primary">#{{ ticket.ticket_number }}</span>
+                                <span class="priority-badge priority-{{ ticket.priority }} ms-2">{{ ticket.priority }}</span>
+                            </div>
+                            <span class="status-badge status-{{ ticket.status.replace(' ', '-') }}">{{ ticket.status }}</span>
+                        </div>
+                        
+                        <div class="mb-2">
+                            <i class="bi bi-geo-alt"></i>
+                            <span class="small">{{ ticket.address }}</span>
+                            {% if ticket.elevator_id %}
+                            <span class="badge bg-light text-dark ms-2">{{ ticket.elevator_id }}</span>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="text-muted small">
+                            <i class="bi bi-chat-left-text"></i>
+                            {{ ticket.problem_description[:100] }}{% if ticket.problem_description|length > 100 %}...{% endif %}
+                        </div>
+                        
+                        <div class="mt-2 d-flex justify-content-between align-items-center">
+                            <span class="text-muted small">
+                                <i class="bi bi-calendar"></i>
+                                {{ ticket.created_at[:16].replace('T', ' ') }}
+                            </span>
+                            <span class="text-muted small">
+                                {% if ticket.source == 'phone' %}📞
+                                {% elif ticket.source == 'mobile_app' %}📱
+                                {% elif ticket.source == 'operator' %}👨‍💻
+                                {% endif %}
+                            </span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="text-center py-5">
+                        <i class="bi bi-inbox text-muted" style="font-size: 48px;"></i>
+                        <p class="text-muted mt-3">Нет заявок</p>
+                        <a href="/new-ticket" class="btn btn-primary">
+                            <i class="bi bi-plus-lg"></i> Создать первую заявку
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Автообновление каждые 30 секунд
+        setInterval(() => {
+            location.reload();
+        }, 30000);
+    </script>
+</body>
+</html>

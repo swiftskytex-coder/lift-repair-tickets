@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📞 Новая заявка - Система заявок на ремонт лифтов</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <style>
+        body {
+            background-color: #f3f4f6;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        
+        .navbar {
+            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+        }
+        
+        .form-card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .form-section {
+            padding: 24px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        .form-section:last-child {
+            border-bottom: none;
+        }
+        
+        .form-label {
+            font-weight: 600;
+            color: #374151;
+        }
+        
+        .form-control, .form-select {
+            border-radius: 8px;
+            border: 1px solid #d1d5db;
+            padding: 10px 14px;
+        }
+        
+        .form-control:focus, .form-select:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+        
+        .btn-submit {
+            background: linear-gradient(135deg, #10b981, #059669);
+            border: none;
+            padding: 12px 32px;
+            font-weight: 600;
+        }
+        
+        .btn-submit:hover {
+            background: linear-gradient(135deg, #059669, #047857);
+        }
+        
+        .section-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 12px;
+        }
+        
+        .phone-badge {
+            background: #dbeafe;
+            color: #1e40af;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand d-flex align-items-center gap-2" href="/">
+                <i class="bi bi-tools"></i>
+                <span>Система заявок на ремонт лифтов</span>
+            </a>
+            <a href="/" class="btn btn-outline-light btn-sm">
+                <i class="bi bi-arrow-left"></i> На главную
+            </a>
+        </div>
+    </nav>
+
+    <div class="container py-4">
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <div class="form-card">
+                    <div class="form-section">
+                        <div class="d-flex align-items-center mb-4">
+                            <div class="section-icon bg-primary text-white">
+                                <i class="bi bi-telephone-plus"></i>
+                            </div>
+                            <div>
+                                <h4 class="mb-0">Новая заявка</h4>
+                                <small class="text-muted">Заполните данные заявки</small>
+                            </div>
+                        </div>
+
+                        <form id="ticketForm" action="/api/tickets" method="POST">
+                            <input type="hidden" name="source" value="operator">
+
+                            <!-- Адрес и лифт -->
+                            <h5 class="mb-3 mt-4">
+                                <i class="bi bi-geo-alt"></i> Адрес и оборудование
+                            </h5>
+
+                            <div class="mb-3">
+                                <label class="form-label">Адрес *</label>
+                                <input type="text" class="form-control" name="address" required 
+                                       placeholder="г. Москва, ул. Ленина, д. 1, подъезд 2">
+                            </div>
+
+                            <div class="row mb-3">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">ID лифта</label>
+                                    <input type="text" class="form-control" name="elevator_id" 
+                                           placeholder="Лифт-001">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Тип лифта</label>
+                                    <select class="form-select" name="elevator_type">
+                                        <option value="">Выберите тип...</option>
+                                        <option value="пассажирский">Пассажирский</option>
+                                        <option value="грузовой">Грузовой</option>
+                                        <option value="больничный">Больничный</option>
+                                        <option value="панорамный">Панорамный</option>
+                                        <option value="неизвестно">Неизвестно</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Описание проблемы -->
+                            <h5 class="mb-3 mt-4">
+                                <i class="bi bi-exclamation-circle"></i> Описание проблемы
+                            </h5>
+
+                            <div class="mb-3">
+                                <label class="form-label">Приоритет *</label>
+                                <select class="form-select" name="priority" required>
+                                    <option value="срочный">🚨 Срочный - Опасно для жизни</option>
+                                    <option value="высокий">⚠️ Высокий - Не работает лифт</option>
+                                    <option value="обычный" selected>📋 Обычный - Неисправность</option>
+                                    <option value="низкий">🔧 Низкий - Плановое обслуживание</option>
+                                </select>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Описание проблемы *</label>
+                                <textarea class="form-control" name="problem_description" rows="4" required
+                                          placeholder="Опишите проблему подробно..."></textarea>
+                            </div>
+
+                            <!-- Заметки оператора -->
+                            <h5 class="mb-3 mt-4">
+                                <i class="bi bi-pencil"></i> Заметки оператора
+                            </h5>
+
+                            <div class="mb-3">
+                                <textarea class="form-control" name="operator_notes" rows="3" 
+                                          placeholder="Внутренние заметки (видны только операторам)"></textarea>
+                            </div>
+
+                            <!-- Кнопки -->
+                            <div class="d-flex gap-2 justify-content-end mt-4">
+                                <a href="/" class="btn btn-outline-secondary">
+                                    <i class="bi bi-x-lg"></i> Отмена
+                                </a>
+                                <button type="submit" class="btn btn-success btn-submit">
+                                    <i class="bi bi-check-lg"></i> Создать заявку
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast для уведомлений -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3">
+        <div id="successToast" class="toast align-items-center text-white bg-success" role="alert">
+            <div class="d-flex">
+                <div class="toast-body">
+                    <i class="bi bi-check-circle"></i> Заявка успешно создана!
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        </div>
+        <div id="errorToast" class="toast align-items-center text-white bg-danger" role="alert">
+            <div class="d-flex">
+                <div class="toast-body">
+                    <i class="bi bi-exclamation-circle"></i> <span id="errorMessage">Ошибка при создании заявки</span>
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.getElementById('ticketForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const data = Object.fromEntries(formData.entries());
+            
+            try {
+                const response = await fetch('/api/tickets', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    const toast = new bootstrap.Toast(document.getElementById('successToast'));
+                    toast.show();
+                    
+                    setTimeout(() => {
+                        window.location.href = '/';
+                    }, 1500);
+                } else {
+                    document.getElementById('errorMessage').textContent = result.error || 'Ошибка при создании заявки';
+                    const toast = new bootstrap.Toast(document.getElementById('errorToast'));
+                    toast.show();
+                }
+            } catch (error) {
+                document.getElementById('errorMessage').textContent = 'Ошибка соединения с сервером';
+                const toast = new bootstrap.Toast(document.getElementById('errorToast'));
+                toast.show();
+            }
+        });
+    </script>
+</body>
+</html>

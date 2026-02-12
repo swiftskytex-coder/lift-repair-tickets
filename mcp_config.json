@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "lift-repair-tickets": {
+      "command": "python",
+      "args": ["/Users/swiftpanaev/KIRO/test4/mcp_server.py"],
+      "description": "Система заявок на ремонт лифтового оборудования",
+      "env": {
+        "PYTHONPATH": "/Users/swiftpanaev/KIRO/test4"
+      }
+    },
+    "warehouse-management": {
+      "command": "python",
+      "args": ["/path/to/warehouse-management/mcp_server.py"],
+      "description": "Складская система управления запчастями"
+    }
+  }
+}

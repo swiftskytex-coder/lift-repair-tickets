@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📋 Список заявок - Система заявок на ремонт лифтов</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <style>
+        body {
+            background-color: #f3f4f6;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        
+        .navbar {
+            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+        }
+        
+        .filter-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .ticket-table {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        
+        .ticket-table th {
+            background: #f9fafb;
+            font-weight: 600;
+            color: #374151;
+            border: none;
+            padding: 16px;
+        }
+        
+        .ticket-table td {
+            padding: 16px;
+            vertical-align: middle;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        .ticket-table tr:hover {
+            background: #f9fafb;
+        }
+        
+        .status-badge {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .status-новая { background: #dbeafe; color: #1e40af; }
+        .status-в-работе { background: #fef3c7; color: #92400e; }
+        .status-выполнена { background: #d1fae5; color: #065f46; }
+        .status-отменена { background: #fee2e2; color: #991b1b; }
+        
+        .priority-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        
+        .priority-срочный { background: #fee2e2; color: #991b1b; }
+        .priority-высокий { background: #fef3c7; color: #92400e; }
+        .priority-обычный { background: #dbeafe; color: #1e40af; }
+        .priority-низкий { background: #f3f4f6; color: #4b5563; }
+        
+        .search-input {
+            border-radius: 8px;
+            border: 1px solid #d1d5db;
+            padding: 10px 14px;
+        }
+        
+        .btn-filter {
+            border-radius: 8px;
+            padding: 10px 20px;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand d-flex align-items-center gap-2" href="/">
+                <i class="bi bi-tools"></i>
+                <span>Система заявок на ремонт лифтов</span>
+            </a>
+            <div class="d-flex gap-2">
+                <a href="/new-ticket" class="btn btn-light btn-sm">
+                    <i class="bi bi-plus-lg"></i> Новая заявка
+                </a>
+                <a href="/" class="btn btn-outline-light btn-sm">
+                    <i class="bi bi-house"></i> На главную
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container py-4">
+        <!-- Заголовок -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h4 class="mb-0">
+                <i class="bi bi-list-ul"></i> Список заявок
+            </h4>
+            <span class="text-muted">Всего: {{ tickets|length }}</span>
+        </div>
+
+        <!-- Фильтры -->
+        <div class="filter-card">
+            <form method="GET" action="/tickets" class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label small text-muted">Статус</label>
+                    <select class="form-select" name="status">
+                        <option value="">Все статусы</option>
+                        <option value="новая" {% if status_filter == 'новая' %}selected{% endif %}>Новая</option>
+                        <option value="в работе" {% if status_filter == 'в работе' %}selected{% endif %}>В работе</option>
+                        <option value="выполнена" {% if status_filter == 'выполнена' %}selected{% endif %}>Выполнена</option>
+                        <option value="отменена" {% if status_filter == 'отменена' %}selected{% endif %}>Отменена</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small text-muted">Приоритет</label>
+                    <select class="form-select" name="priority">
+                        <option value="">Все приоритеты</option>
+                        <option value="срочный" {% if priority_filter == 'срочный' %}selected{% endif %}>Срочный</option>
+                        <option value="высокий" {% if priority_filter == 'высокий' %}selected{% endif %}>Высокий</option>
+                        <option value="обычный" {% if priority_filter == 'обычный' %}selected{% endif %}>Обычный</option>
+                        <option value="низкий" {% if priority_filter == 'низкий' %}selected{% endif %}>Низкий</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small text-muted">Поиск</label>
+                    <input type="text" class="form-control search-input" name="search" 
+                           placeholder="Адрес, ID лифта...">
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary btn-filter w-100">
+                        <i class="bi bi-funnel"></i> Фильтр
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Таблица заявок -->
+        <div class="ticket-table">
+            <table class="table mb-0">
+                <thead>
+                    <tr>
+                        <th>№</th>
+                        <th>Адрес</th>
+                        <th>Проблема</th>
+                        <th>Приоритет</th>
+                        <th>Статус</th>
+                        <th>Дата</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if tickets %}
+                        {% for ticket in tickets %}
+                        <tr>
+                            <td>
+                                <a href="/ticket/{{ ticket.id }}" class="text-decoration-none fw-bold">
+                                    #{{ ticket.ticket_number }}
+                                </a>
+                            </td>
+                            <td>
+                                <small>{{ ticket.address }}</small>
+                                {% if ticket.elevator_id %}
+                                <br><span class="badge bg-light text-dark">{{ ticket.elevator_id }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <small class="text-muted">{{ ticket.problem_description[:60] }}{% if ticket.problem_description|length > 60 %}...{% endif %}</small>
+                            </td>
+                            <td>
+                                <span class="priority-badge priority-{{ ticket.priority }}">{{ ticket.priority }}</span>
+                            </td>
+                            <td>
+                                <span class="status-badge status-{{ ticket.status.replace(' ', '-') }}">{{ ticket.status }}</span>
+                            </td>
+                            <td>
+                                <small class="text-muted">{{ ticket.created_at[:10] }}</small>
+                            </td>
+                            <td>
+                                <a href="/ticket/{{ ticket.id }}" class="btn btn-sm btn-outline-primary">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="7" class="text-center py-5">
+                                <i class="bi bi-inbox text-muted" style="font-size: 48px;"></i>
+                                <p class="text-muted mt-3">Заявки не найдены</p>
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
