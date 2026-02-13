@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🛗 Справочник лифтов - Система заявок на ремонт лифтов</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <style>
+        body {
+            background-color: #f3f4f6;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        
+        .navbar {
+            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+        }
+        
+        .table-card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .search-box {
+            border-radius: 8px;
+            border: 1px solid #d1d5db;
+            padding: 10px 14px;
+        }
+
+        .action-btn {
+            padding: 4px 8px;
+            font-size: 12px;
+        }
+
+        .elevator-row:hover .action-buttons {
+            opacity: 1;
+        }
+
+        .action-buttons {
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand d-flex align-items-center gap-2" href="/">
+                <i class="bi bi-tools"></i>
+                <span>Система заявок на ремонт лифтов</span>
+            </a>
+            <div class="d-flex gap-2">
+                <a href="/" class="btn btn-outline-light btn-sm">
+                    <i class="bi bi-house"></i> На главную
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container py-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h4 class="mb-0">
+                <i class="bi bi-building"></i> Справочник лифтов
+            </h4>
+            <button class="btn btn-success" onclick="openAddModal()">
+                <i class="bi bi-plus-lg"></i> Добавить лифт
+            </button>
+        </div>
+
+        <!-- Поиск -->
+        <div class="mb-4">
+            <input type="text" class="form-control search-box" id="searchInput" 
+                   placeholder="🔍 Поиск по ID, адресу или подъезду...">
+        </div>
+
+        <!-- Таблица лифтов -->
+        <div class="table-card p-4">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Адрес</th>
+                            <th>Подъезд</th>
+                            <th>Тип</th>
+                            <th>Статус</th>
+                            <th>Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody id="elevatorsTable">
+                        {% for elevator in elevators %}
+                        <tr class="elevator-row" data-id="{{ elevator.elevator_id }}">
+                            <td class="fw-bold">{{ elevator.elevator_id }}</td>
+                            <td>{{ elevator.address }}</td>
+                            <td>{% if elevator.entrance %}{{ elevator.entrance }}{% else %}-{% endif %}</td>
+                            <td>
+                                <span class="badge bg-secondary">{{ elevator.elevator_type }}</span>
+                            </td>
+                            <td>
+                                {% if elevator.status == 'active' %}
+                                    <span class="badge bg-success">Активен</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">{{ elevator.status }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="action-buttons">
+                                    <button class="btn btn-sm btn-outline-primary action-btn" 
+                                            onclick="openEditModal('{{ elevator.elevator_id }}', '{{ elevator.address }}', '{{ elevator.entrance or '' }}', '{{ elevator.elevator_type }}', '{{ elevator.status }}')">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger action-btn" 
+                                            onclick="deleteElevator('{{ elevator.elevator_id }}')">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            {% if not elevators %}
+            <div class="text-center py-5">
+                <i class="bi bi-building text-muted" style="font-size: 48px;"></i>
+                <p class="text-muted mt-3">Нет данных о лифтах</p>
+                <button class="btn btn-primary" onclick="openAddModal()">
+                    <i class="bi bi-plus-lg"></i> Добавить первый лифт
+                </button>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Модальное окно добавления/редактирования -->
+    <div class="modal fade" id="elevatorModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalTitle">Добавить лифт</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="elevatorForm">
+                        <input type="hidden" id="originalId" name="original_id">
+                        <div class="mb-3">
+                            <label class="form-label">ID лифта *</label>
+                            <input type="text" class="form-control" id="elevatorId" name="elevator_id" required 
+                                   placeholder="например: 001">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Адрес *</label>
+                            <input type="text" class="form-control" id="elevatorAddress" name="address" required 
+                                   placeholder="г. Москва, ул. Ленина, д. 1">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Подъезд</label>
+                            <input type="text" class="form-control" id="elevatorEntrance" name="entrance" 
+                                   placeholder="например: 1 или А">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Тип лифта</label>
+                            <select class="form-select" id="elevatorType" name="elevator_type">
+                                <option value="пассажирский">Пассажирский</option>
+                                <option value="грузовой">Грузовой</option>
+                                <option value="больничный">Больничный</option>
+                                <option value="подъёмник">Подъёмник</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Статус</label>
+                            <select class="form-select" id="elevatorStatus" name="status">
+                                <option value="active">Активен</option>
+                                <option value="inactive">Неактивен</option>
+                                <option value="maintenance">На обслуживании</option>
+                            </select>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="button" class="btn btn-primary" id="saveBtn" onclick="saveElevator()">Сохранить</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast для уведомлений -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3">
+        <div id="successToast" class="toast align-items-center text-white bg-success" role="alert">
+            <div class="d-flex">
+                <div class="toast-body">
+                    <i class="bi bi-check-circle"></i> <span id="successMessage">Успешно!</span>
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        </div>
+        <div id="errorToast" class="toast align-items-center text-white bg-danger" role="alert">
+            <div class="d-flex">
+                <div class="toast-body">
+                    <i class="bi bi-exclamation-circle"></i> <span id="errorMessage">Ошибка!</span>
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let isEditMode = false;
+        const modal = new bootstrap.Modal(document.getElementById('elevatorModal'));
+
+        // Поиск по таблице
+        document.getElementById('searchInput').addEventListener('input', function(e) {
+            const query = e.target.value.toLowerCase();
+            const rows = document.querySelectorAll('.elevator-row');
+            
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                if (text.includes(query)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        });
+
+        // Открыть модальное окно для добавления
+        function openAddModal() {
+            isEditMode = false;
+            document.getElementById('modalTitle').textContent = 'Добавить лифт';
+            document.getElementById('elevatorForm').reset();
+            document.getElementById('originalId').value = '';
+            modal.show();
+        }
+
+        // Открыть модальное окно для редактирования
+        function openEditModal(id, address, entrance, type, status) {
+            isEditMode = true;
+            document.getElementById('modalTitle').textContent = 'Редактировать лифт';
+            document.getElementById('originalId').value = id;
+            document.getElementById('elevatorId').value = id;
+            document.getElementById('elevatorAddress').value = address;
+            document.getElementById('elevatorEntrance').value = entrance || '';
+            document.getElementById('elevatorType').value = type || 'пассажирский';
+            document.getElementById('elevatorStatus').value = status || 'active';
+            modal.show();
+        }
+
+        // Сохранить лифт (создать или обновить)
+        async function saveElevator() {
+            const form = document.getElementById('elevatorForm');
+            const formData = new FormData(form);
+            const data = {
+                elevator_id: formData.get('elevator_id'),
+                address: formData.get('address'),
+                entrance: formData.get('entrance'),
+                elevator_type: formData.get('elevator_type'),
+                status: formData.get('status')
+            };
+
+            // Валидация
+            if (!data.elevator_id || !data.address) {
+                showError('Заполните обязательные поля');
+                return;
+            }
+
+            try {
+                let response;
+                if (isEditMode) {
+                    // Обновление
+                    const originalId = document.getElementById('originalId').value;
+                    response = await fetch(`/api/elevators/${originalId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    });
+                } else {
+                    // Создание
+                    response = await fetch('/api/elevators', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    });
+                }
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showSuccess(isEditMode ? 'Лифт обновлен' : 'Лифт добавлен');
+                    modal.hide();
+                    setTimeout(() => location.reload(), 500);
+                } else {
+                    showError(result.error || 'Ошибка сохранения');
+                }
+            } catch (error) {
+                showError('Ошибка соединения с сервером');
+            }
+        }
+
+        // Удалить лифт
+        async function deleteElevator(id) {
+            if (!confirm(`Удалить лифт ${id}?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/elevators/${id}`, {
+                    method: 'DELETE'
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showSuccess('Лифт удален');
+                    setTimeout(() => location.reload(), 500);
+                } else {
+                    showError(result.error || 'Ошибка удаления');
+                }
+            } catch (error) {
+                showError('Ошибка соединения с сервером');
+            }
+        }
+
+        // Показать сообщение об успехе
+        function showSuccess(message) {
+            document.getElementById('successMessage').textContent = message;
+            const toast = new bootstrap.Toast(document.getElementById('successToast'));
+            toast.show();
+        }
+
+        // Показать сообщение об ошибке
+        function showError(message) {
+            document.getElementById('errorMessage').textContent = message;
+            const toast = new bootstrap.Toast(document.getElementById('errorToast'));
+            toast.show();
+        }
+    </script>
+</body>
+</html>

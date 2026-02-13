@@ -5,7 +5,9 @@ Flask-based web server for lift repair tickets
 
 import json
 from datetime import datetime
-from flask import Flask, request, jsonify, render_template, send_from_directory
+from flask import Flask, request, jsonify, render_template, send_from_directory, send_file
+import shutil
+from pathlib import Path
 from ticket_db import db
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
@@ -62,7 +64,15 @@ def ticket_detail(ticket_id):
 @app.route('/new-ticket')
 def new_ticket_form():
     """Форма создания новой заявки"""
-    return render_template('new_ticket.html')
+    elevators = db.get_all_elevators(limit=200)
+    return render_template('new_ticket.html', elevators=elevators)
+
+
+@app.route('/elevators')
+def elevators_list():
+    """Справочник лифтов"""
+    elevators = db.get_all_elevators(limit=200)
+    return render_template('elevators.html', elevators=elevators)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -368,6 +378,216 @@ def health_check():
     except Exception as e:
         return jsonify({
             'status': 'unhealthy',
+            'error': str(e)
+        }), 500
+
+
+# ═══════════════════════════════════════════════════════════════
+# API для управления лифтами (объектами)
+# ═══════════════════════════════════════════════════════════════
+
+@app.route('/api/elevators', methods=['GET'])
+def api_get_elevators():
+    """Получение списка лифтов"""
+    query = request.args.get('q', '')
+    limit = request.args.get('limit', 200, type=int)
+    
+    elevators = db.search_elevators(query=query if query else None, limit=limit)
+    
+    return jsonify({
+        'success': True,
+        'count': len(elevators),
+        'elevators': elevators
+    })
+
+
+@app.route('/api/elevators', methods=['POST'])
+def api_create_elevator():
+    """Добавление нового лифта"""
+    data = request.get_json()
+    
+    if not data or not data.get('elevator_id') or not data.get('address'):
+        return jsonify({
+            'success': False,
+            'error': 'elevator_id and address are required'
+        }), 400
+    
+    try:
+        elevator_id = db.add_elevator(data)
+        return jsonify({
+            'success': True,
+            'message': 'Лифт добавлен',
+            'elevator_id': elevator_id
+        }), 201
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/elevators/<elevator_id>', methods=['GET'])
+def api_get_elevator(elevator_id):
+    """Получение информации о лифте"""
+    elevator = db.get_elevator(elevator_id)
+    
+    if not elevator:
+        return jsonify({
+            'success': False,
+            'error': 'Elevator not found'
+        }), 404
+    
+    return jsonify({
+        'success': True,
+        'elevator': elevator
+    })
+
+
+@app.route('/api/elevators/<elevator_id>', methods=['PUT'])
+def api_update_elevator(elevator_id):
+    """Обновление данных лифта"""
+    data = request.get_json()
+    
+    elevator = db.update_elevator(elevator_id, data)
+    
+    if not elevator:
+        return jsonify({
+            'success': False,
+            'error': 'Elevator not found'
+        }), 404
+    
+    return jsonify({
+        'success': True,
+        'message': 'Данные обновлены',
+        'elevator': elevator
+    })
+
+
+@app.route('/api/elevators/<elevator_id>', methods=['DELETE'])
+def api_delete_elevator(elevator_id):
+    """Удаление лифта"""
+    if db.delete_elevator(elevator_id):
+        return jsonify({
+            'success': True,
+            'message': 'Лифт удален'
+        })
+    else:
+        return jsonify({
+            'success': False,
+            'error': 'Elevator not found'
+        }), 404
+
+
+# ═══════════════════════════════════════════════════════════════
+# API для бэкапа базы данных
+# ═══════════════════════════════════════════════════════════════
+
+@app.route('/api/backup', methods=['POST'])
+def api_create_backup():
+    """Создание бэкапа базы данных"""
+    try:
+        # Создаем папку для бэкапов если её нет
+        backup_dir = Path('backups')
+        backup_dir.mkdir(exist_ok=True)
+        
+        # Формируем имя файла с датой и временем
+        from datetime import datetime
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        backup_filename = f'tickets_backup_{timestamp}.db'
+        backup_path = backup_dir / backup_filename
+        
+        # Копируем базу данных
+        db_path = Path('instance/tickets.db')
+        if db_path.exists():
+            shutil.copy2(db_path, backup_path)
+            return jsonify({
+                'success': True,
+                'message': 'Бэкап создан успешно',
+                'filename': backup_filename,
+                'path': str(backup_path)
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'База данных не найдена'
+            }), 404
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/backup/download', methods=['GET'])
+def api_download_backup():
+    """Скачивание текущей базы данных"""
+    try:
+        db_path = Path('instance/tickets.db')
+        if db_path.exists():
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            return send_file(
+                db_path,
+                mimetype='application/x-sqlite3',
+                as_attachment=True,
+                download_name=f'tickets_backup_{timestamp}.db'
+            )
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'База данных не найдена'
+            }), 404
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/backup/restore', methods=['POST'])
+def api_restore_backup():
+    """Восстановление базы данных из бэкапа"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({
+                'success': False,
+                'error': 'Файл не загружен'
+            }), 400
+        
+        file = request.files['file']
+        filename = file.filename
+        
+        if not filename:
+            return jsonify({
+                'success': False,
+                'error': 'Файл не выбран'
+            }), 400
+        
+        # Проверяем расширение файла
+        if not filename.endswith('.db'):
+            return jsonify({
+                'success': False,
+                'error': 'Неподдерживаемый формат файла. Загрузите .db файл'
+            }), 400
+        
+        db_path = Path('instance/tickets.db')
+        
+        # Создаем резервную копию текущей базы перед восстановлением
+        if db_path.exists():
+            backup_before = f'instance/tickets_before_restore.db'
+            shutil.copy2(db_path, backup_before)
+        
+        # Восстанавливаем базу из загруженного файла
+        file.save(str(db_path))
+        
+        return jsonify({
+            'success': True,
+            'message': 'Бэкап успешно восстановлен! Перезапустите сервер для применения изменений.',
+            'note': 'Сервер необходимо перезапустить вручную'
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
             'error': str(e)
         }), 500
 

@@ -53,6 +53,13 @@
             font-size: 12px;
             font-weight: 600;
             text-transform: uppercase;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+        }
+        
+        .status-badge:hover {
+            transform: scale(1.05);
         }
         
         .status-новая { background: #dbeafe; color: #1e40af; }
@@ -81,6 +88,51 @@
         .btn-filter {
             border-radius: 8px;
             padding: 10px 20px;
+        }
+
+        .status-select {
+            padding: 4px 8px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            border: 2px solid transparent;
+            cursor: pointer;
+            min-width: 120px;
+        }
+
+        .status-select.status-новая { 
+            background: #dbeafe; 
+            color: #1e40af; 
+            border-color: #3b82f6;
+        }
+        .status-select.status-в-работе { 
+            background: #fef3c7; 
+            color: #92400e; 
+            border-color: #f59e0b;
+        }
+        .status-select.status-выполнена { 
+            background: #d1fae5; 
+            color: #065f46; 
+            border-color: #10b981;
+        }
+        .status-select.status-отменена { 
+            background: #fee2e2; 
+            color: #991b1b; 
+            border-color: #ef4444;
+        }
+
+        .status-select:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+        }
+
+        .quick-status-btn {
+            padding: 2px 8px;
+            font-size: 11px;
+            border-radius: 4px;
+            margin-right: 4px;
+            margin-bottom: 2px;
         }
     </style>
 </head>
@@ -158,13 +210,14 @@
                         <th>Приоритет</th>
                         <th>Статус</th>
                         <th>Дата</th>
+                        <th>Быстро</th>
                         <th></th>
                     </tr>
                 </thead>
                 <tbody>
                     {% if tickets %}
                         {% for ticket in tickets %}
-                        <tr>
+                        <tr data-ticket-id="{{ ticket.id }}">
                             <td>
                                 <a href="/ticket/{{ ticket.id }}" class="text-decoration-none fw-bold">
                                     #{{ ticket.ticket_number }}
@@ -183,10 +236,28 @@
                                 <span class="priority-badge priority-{{ ticket.priority }}">{{ ticket.priority }}</span>
                             </td>
                             <td>
-                                <span class="status-badge status-{{ ticket.status.replace(' ', '-') }}">{{ ticket.status }}</span>
+                                <select class="status-select status-{{ ticket.status.replace(' ', '-') }}" 
+                                        onchange="updateTicketStatus({{ ticket.id }}, this.value)"
+                                        data-original-status="{{ ticket.status }}">
+                                    <option value="новая" {% if ticket.status == 'новая' %}selected{% endif %}>Новая</option>
+                                    <option value="в работе" {% if ticket.status == 'в работе' %}selected{% endif %}>В работе</option>
+                                    <option value="выполнена" {% if ticket.status == 'выполнена' %}selected{% endif %}>Выполнена</option>
+                                    <option value="отменена" {% if ticket.status == 'отменена' %}selected{% endif %}>Отменена</option>
+                                </select>
                             </td>
                             <td>
                                 <small class="text-muted">{{ ticket.created_at[:10] }}</small>
+                            </td>
+                            <td>
+                                {% if ticket.status == 'новая' %}
+                                    <button class="btn btn-warning btn-sm quick-status-btn" onclick="quickUpdateStatus({{ ticket.id }}, 'в работе')">
+                                        В работу
+                                    </button>
+                                {% elif ticket.status == 'в работе' %}
+                                    <button class="btn btn-success btn-sm quick-status-btn" onclick="quickUpdateStatus({{ ticket.id }}, 'выполнена')">
+                                        Завершить
+                                    </button>
+                                {% endif %}
                             </td>
                             <td>
                                 <a href="/ticket/{{ ticket.id }}" class="btn btn-sm btn-outline-primary">
@@ -197,7 +268,7 @@
                         {% endfor %}
                     {% else %}
                         <tr>
-                            <td colspan="7" class="text-center py-5">
+                            <td colspan="8" class="text-center py-5">
                                 <i class="bi bi-inbox text-muted" style="font-size: 48px;"></i>
                                 <p class="text-muted mt-3">Заявки не найдены</p>
                             </td>
@@ -208,6 +279,103 @@
         </div>
     </div>
 
+    <!-- Toast для уведомлений -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3">
+        <div id="successToast" class="toast align-items-center text-white bg-success" role="alert">
+            <div class="d-flex">
+                <div class="toast-body">
+                    <i class="bi bi-check-circle"></i> <span id="successMessage">Статус обновлен!</span>
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        </div>
+        <div id="errorToast" class="toast align-items-center text-white bg-danger" role="alert">
+            <div class="d-flex">
+                <div class="toast-body">
+                    <i class="bi bi-exclamation-circle"></i> <span id="errorMessage">Ошибка!</span>
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Обновление статуса заявки
+        async function updateTicketStatus(ticketId, newStatus) {
+            const select = document.querySelector(`tr[data-ticket-id="${ticketId}"] .status-select`);
+            const originalStatus = select.getAttribute('data-original-status');
+            
+            try {
+                const response = await fetch(`/api/tickets/${ticketId}/status`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        status: newStatus,
+                        user: 'operator'
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Обновляем класс select для нового статуса
+                    select.className = `status-select status-${newStatus.replace(' ', '-')}`;
+                    select.setAttribute('data-original-status', newStatus);
+                    
+                    // Обновляем кнопки быстрого действия
+                    updateQuickButtons(ticketId, newStatus);
+                    
+                    showSuccess(`Статус изменен на: ${newStatus}`);
+                } else {
+                    // Возвращаем предыдущее значение
+                    select.value = originalStatus;
+                    showError(result.error || 'Ошибка обновления статуса');
+                }
+            } catch (error) {
+                // Возвращаем предыдущее значение
+                select.value = originalStatus;
+                showError('Ошибка соединения с сервером');
+            }
+        }
+
+        // Быстрое обновление статуса через кнопку
+        async function quickUpdateStatus(ticketId, newStatus) {
+            const select = document.querySelector(`tr[data-ticket-id="${ticketId}"] .status-select`);
+            select.value = newStatus;
+            await updateTicketStatus(ticketId, newStatus);
+        }
+
+        // Обновление кнопок быстрого действия
+        function updateQuickButtons(ticketId, status) {
+            const row = document.querySelector(`tr[data-ticket-id="${ticketId}"]`);
+            const quickCell = row.cells[6]; // 7-я колонка (индекс 6)
+            
+            let buttonsHtml = '';
+            if (status === 'новая') {
+                buttonsHtml = `<button class="btn btn-warning btn-sm quick-status-btn" onclick="quickUpdateStatus(${ticketId}, 'в работе')">В работу</button>`;
+            } else if (status === 'в работе') {
+                buttonsHtml = `<button class="btn btn-success btn-sm quick-status-btn" onclick="quickUpdateStatus(${ticketId}, 'выполнена')">Завершить</button>`;
+            }
+            
+            quickCell.innerHTML = buttonsHtml;
+        }
+
+        // Показать сообщение об успехе
+        function showSuccess(message) {
+            document.getElementById('successMessage').textContent = message;
+            const toast = new bootstrap.Toast(document.getElementById('successToast'));
+            toast.show();
+        }
+
+        // Показать сообщение об ошибке
+        function showError(message) {
+            document.getElementById('errorMessage').textContent = message;
+            const toast = new bootstrap.Toast(document.getElementById('errorToast'));
+            toast.show();
+        }
+    </script>
 </body>
 </html>

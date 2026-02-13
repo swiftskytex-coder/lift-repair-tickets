@@ -86,10 +86,27 @@ class TicketDatabase:
                 )
             ''')
             
+            # Таблица лифтов (объектов)
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS elevators (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    elevator_id TEXT UNIQUE NOT NULL,
+                    address TEXT NOT NULL,
+                    entrance TEXT,
+                    elevator_type TEXT DEFAULT 'пассажирский',
+                    description TEXT,
+                    status TEXT DEFAULT 'active',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
             # Индексы для быстрого поиска
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_tickets_priority ON tickets(priority)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_tickets_created ON tickets(created_at)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_elevators_elevator_id ON elevators(elevator_id)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_elevators_address ON elevators(address)')
             
             conn.commit()
     
@@ -216,8 +233,13 @@ class TicketDatabase:
         if not ticket:
             return None
         
-        # Обновляем историю
-        history = json.loads(ticket.get('history', '[]'))
+        # Обновляем историю (history может быть уже списком или строкой)
+        history_data = ticket.get('history', '[]')
+        if isinstance(history_data, str):
+            history = json.loads(history_data)
+        else:
+            history = history_data
+        
         history.append({
             'timestamp': datetime.now().isoformat(),
             'action': f'Изменение статуса: {ticket["status"]} → {new_status}',
@@ -350,6 +372,94 @@ class TicketDatabase:
             else:
                 result[key] = value
         return result
+
+    # ═══════════════════════════════════════════════════════════════
+    # Методы для работы с лифтами (объектами)
+    # ═══════════════════════════════════════════════════════════════
+
+    def add_elevator(self, data):
+        """Добавление нового лифта в справочник"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT OR REPLACE INTO elevators 
+                (elevator_id, address, entrance, elevator_type, description, status)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (
+                data.get('elevator_id'),
+                data.get('address'),
+                data.get('entrance'),
+                data.get('elevator_type', 'пассажирский'),
+                data.get('description', ''),
+                data.get('status', 'active')
+            ))
+            conn.commit()
+            return cursor.lastrowid
+
+    def get_elevator(self, elevator_id):
+        """Получение информации о лифте по ID"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT * FROM elevators WHERE elevator_id = ?', (elevator_id,))
+            row = cursor.fetchone()
+            if row:
+                return self._row_to_dict(row)
+            return None
+
+    def search_elevators(self, query=None, limit=50):
+        """Поиск лифтов по адресу или ID"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            if query:
+                cursor.execute('''
+                    SELECT * FROM elevators 
+                    WHERE elevator_id LIKE ? OR address LIKE ?
+                    ORDER BY address
+                    LIMIT ?
+                ''', (f'%{query}%', f'%{query}%', limit))
+            else:
+                cursor.execute('SELECT * FROM elevators ORDER BY address LIMIT ?', (limit,))
+            
+            rows = cursor.fetchall()
+            return [self._row_to_dict(row) for row in rows]
+
+    def get_all_elevators(self, limit=200):
+        """Получение всех лифтов"""
+        return self.search_elevators(limit=limit)
+
+    def update_elevator(self, elevator_id, data):
+        """Обновление данных лифта"""
+        fields = []
+        values = []
+        
+        for key, value in data.items():
+            if key != 'id' and key != 'elevator_id':
+                fields.append(f"{key} = ?")
+                values.append(value)
+        
+        if not fields:
+            return None
+        
+        values.append(elevator_id)
+        
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(f'''
+                UPDATE elevators 
+                SET {', '.join(fields)}, updated_at = CURRENT_TIMESTAMP
+                WHERE elevator_id = ?
+            ''', values)
+            conn.commit()
+            return self.get_elevator(elevator_id)
+
+    def delete_elevator(self, elevator_id):
+        """Удаление лифта из справочника"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM elevators WHERE elevator_id = ?', (elevator_id,))
+            conn.commit()
+            return cursor.rowcount > 0
 
 
 # Синглтон для доступа к БД

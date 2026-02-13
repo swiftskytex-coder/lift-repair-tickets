@@ -112,34 +112,41 @@
                         <form id="ticketForm" action="/api/tickets" method="POST">
                             <input type="hidden" name="source" value="operator">
 
-                            <!-- Адрес и лифт -->
+                            <!-- Выбор лифта -->
                             <h5 class="mb-3 mt-4">
-                                <i class="bi bi-geo-alt"></i> Адрес и оборудование
+                                <i class="bi bi-geo-alt"></i> Выбор объекта
                             </h5>
 
                             <div class="mb-3">
-                                <label class="form-label">Адрес *</label>
-                                <input type="text" class="form-control" name="address" required 
-                                       placeholder="г. Москва, ул. Ленина, д. 1, подъезд 2">
+                                <label class="form-label">Поиск лифта *</label>
+                                <input type="text" class="form-control" id="elevatorSearch" 
+                                       placeholder="Введите ID или адрес..." autocomplete="off">
+                                <div id="elevatorList" class="list-group mt-2" style="max-height: 200px; overflow-y: auto; display: none;">
+                                    {% for elevator in elevators %}
+                                    <button type="button" class="list-group-item list-group-item-action elevator-item" 
+                                            data-id="{{ elevator.elevator_id }}"
+                                            data-address="{{ elevator.address }}"
+                                            data-entrance="{{ elevator.entrance or '' }}"
+                                            data-type="{{ elevator.elevator_type }}">
+                                        <strong>{{ elevator.elevator_id }}</strong> - {{ elevator.address }}{% if elevator.entrance %}, подъезд {{ elevator.entrance }}{% endif %}
+                                        <span class="badge bg-secondary float-end">{{ elevator.elevator_type }}</span>
+                                    </button>
+                                    {% endfor %}
+                                </div>
                             </div>
 
-                            <div class="row mb-3">
-                                <div class="col-md-6 mb-3">
-                                    <label class="form-label">ID лифта</label>
-                                    <input type="text" class="form-control" name="elevator_id" 
-                                           placeholder="Лифт-001">
-                                </div>
-                                <div class="col-md-6 mb-3">
-                                    <label class="form-label">Тип лифта</label>
-                                    <select class="form-select" name="elevator_type">
-                                        <option value="">Выберите тип...</option>
-                                        <option value="пассажирский">Пассажирский</option>
-                                        <option value="грузовой">Грузовой</option>
-                                        <option value="больничный">Больничный</option>
-                                        <option value="панорамный">Панорамный</option>
-                                        <option value="неизвестно">Неизвестно</option>
-                                    </select>
-                                </div>
+                            <div class="mb-3">
+                                <label class="form-label">Выбранный лифт</label>
+                                <input type="text" class="form-control" id="selectedElevator" readonly 
+                                       placeholder="Лифт не выбран">
+                                <input type="hidden" name="elevator_id" id="elevatorIdInput">
+                                <input type="hidden" name="elevator_type" id="elevatorTypeInput">
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Адрес *</label>
+                                <input type="text" class="form-control" name="address" id="addressInput" required 
+                                       placeholder="Адрес заполнится автоматически">
                             </div>
 
                             <!-- Описание проблемы -->
@@ -211,6 +218,66 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        // Поиск и выбор лифта
+        const elevatorSearch = document.getElementById('elevatorSearch');
+        const elevatorList = document.getElementById('elevatorList');
+        const selectedElevator = document.getElementById('selectedElevator');
+        const elevatorIdInput = document.getElementById('elevatorIdInput');
+        const elevatorTypeInput = document.getElementById('elevatorTypeInput');
+        const addressInput = document.getElementById('addressInput');
+        const elevatorItems = document.querySelectorAll('.elevator-item');
+
+        // Показать/скрыть список при фокусе
+        elevatorSearch.addEventListener('focus', () => {
+            elevatorList.style.display = 'block';
+            filterElevators(elevatorSearch.value);
+        });
+
+        // Фильтрация при вводе
+        elevatorSearch.addEventListener('input', (e) => {
+            filterElevators(e.target.value);
+            elevatorList.style.display = 'block';
+        });
+
+        // Скрыть список при клике вне
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('#elevatorSearch') && !e.target.closest('#elevatorList')) {
+                elevatorList.style.display = 'none';
+            }
+        });
+
+        // Фильтрация лифтов
+        function filterElevators(query) {
+            const lowerQuery = query.toLowerCase();
+            elevatorItems.forEach(item => {
+                const text = item.textContent.toLowerCase();
+                if (text.includes(lowerQuery)) {
+                    item.style.display = 'block';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+        }
+
+        // Выбор лифта
+        elevatorItems.forEach(item => {
+            item.addEventListener('click', () => {
+                const id = item.dataset.id;
+                const address = item.dataset.address;
+                const entrance = item.dataset.entrance;
+                const type = item.dataset.type;
+
+                const fullAddress = entrance ? `${address}, подъезд ${entrance}` : address;
+                selectedElevator.value = `${id} - ${fullAddress}`;
+                elevatorIdInput.value = id;
+                elevatorTypeInput.value = type;
+                addressInput.value = fullAddress;
+                elevatorSearch.value = '';
+                elevatorList.style.display = 'none';
+            });
+        });
+
+        // Отправка формы
         document.getElementById('ticketForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             
