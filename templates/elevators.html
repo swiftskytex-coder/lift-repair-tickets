@@ -98,7 +98,15 @@
                             <td>
                                 <span class="badge bg-secondary">{{ elevator.elevator_type }}</span>
                             </td>
-                            <td>{% if elevator.mechanic %}{{ elevator.mechanic }}{% else %}<span class="text-muted">-</span>{% endif %}</td>
+                            <td>
+                                {% if elevator.mechanics %}
+                                    {% for mechanic in elevator.mechanics %}
+                                        <span class="badge bg-info text-dark me-1">{{ mechanic.name }}</span>
+                                    {% endfor %}
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
                             <td>
                                 {% if elevator.status == 'active' %}
                                     <span class="badge bg-success">Активен</span>
@@ -109,7 +117,7 @@
                             <td>
                                 <div class="action-buttons">
                                     <button class="btn btn-sm btn-outline-primary action-btn" 
-                                            onclick="openEditModal('{{ elevator.elevator_id }}', '{{ elevator.address }}', '{{ elevator.entrance or '' }}', '{{ elevator.elevator_type }}', '{{ elevator.mechanic or '' }}', '{{ elevator.status }}')">
+                                            onclick="openEditModal('{{ elevator.elevator_id }}', '{{ elevator.address }}', '{{ elevator.entrance or '' }}', '{{ elevator.elevator_type }}', '{{ elevator.status }}')">
                                         <i class="bi bi-pencil"></i>
                                     </button>
                                     <button class="btn btn-sm btn-outline-danger action-btn" 
@@ -172,9 +180,11 @@
                             </select>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label">Механик</label>
-                            <input type="text" class="form-control" id="elevatorMechanic" name="mechanic" 
-                                   placeholder="например: Иванов">
+                            <label class="form-label">Механики</label>
+                            <div id="mechanicsList" class="border rounded p-3" style="max-height: 200px; overflow-y: auto;">
+                                <div class="text-muted">Загрузка списка механиков...</div>
+                            </div>
+                            <div class="form-text">Выберите механиков, закрепленных за этим лифтом</div>
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Статус</label>
@@ -234,17 +244,77 @@
             });
         });
 
+        // Загрузить список механиков
+        async function loadMechanicsList() {
+            try {
+                const response = await fetch('/api/mechanics');
+                const result = await response.json();
+                
+                if (result.success) {
+                    const container = document.getElementById('mechanicsList');
+                    if (result.mechanics.length === 0) {
+                        container.innerHTML = '<div class="text-muted">Нет доступных механиков. <a href="/mechanics">Добавьте механиков</a></div>';
+                        return;
+                    }
+                    
+                    let html = '';
+                    result.mechanics.forEach(mechanic => {
+                        if (mechanic.status === 'active') {
+                            html += `
+                                <div class="form-check">
+                                    <input class="form-check-input mechanic-checkbox" type="checkbox" 
+                                           value="${mechanic.id}" id="mechanic_${mechanic.id}">
+                                    <label class="form-check-label" for="mechanic_${mechanic.id}">
+                                        ${mechanic.name} (${mechanic.phone})
+                                    </label>
+                                </div>
+                            `;
+                        }
+                    });
+                    container.innerHTML = html;
+                }
+            } catch (error) {
+                console.error('Ошибка загрузки механиков:', error);
+            }
+        }
+
+        // Загрузить механиков для конкретного лифта
+        async function loadElevatorMechanics(elevatorId) {
+            try {
+                const response = await fetch(`/api/elevators/${elevatorId}/mechanics`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Сбрасываем все чекбоксы
+                    document.querySelectorAll('.mechanic-checkbox').forEach(cb => {
+                        cb.checked = false;
+                    });
+                    
+                    // Отмечаем выбранных механиков
+                    result.mechanics.forEach(mechanic => {
+                        const checkbox = document.getElementById(`mechanic_${mechanic.id}`);
+                        if (checkbox) {
+                            checkbox.checked = true;
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('Ошибка загрузки механиков лифта:', error);
+            }
+        }
+
         // Открыть модальное окно для добавления
-        function openAddModal() {
+        async function openAddModal() {
             isEditMode = false;
             document.getElementById('modalTitle').textContent = 'Добавить лифт';
             document.getElementById('elevatorForm').reset();
             document.getElementById('originalId').value = '';
+            await loadMechanicsList();
             modal.show();
         }
 
         // Открыть модальное окно для редактирования
-        function openEditModal(id, address, entrance, type, mechanic, status) {
+        async function openEditModal(id, address, entrance, type, mechanic, status) {
             isEditMode = true;
             document.getElementById('modalTitle').textContent = 'Редактировать лифт';
             document.getElementById('originalId').value = id;
@@ -252,9 +322,21 @@
             document.getElementById('elevatorAddress').value = address;
             document.getElementById('elevatorEntrance').value = entrance || '';
             document.getElementById('elevatorType').value = type || 'пассажирский';
-            document.getElementById('elevatorMechanic').value = mechanic || '';
             document.getElementById('elevatorStatus').value = status || 'active';
+            
+            await loadMechanicsList();
+            await loadElevatorMechanics(id);
+            
             modal.show();
+        }
+
+        // Получить выбранных механиков
+        function getSelectedMechanics() {
+            const selected = [];
+            document.querySelectorAll('.mechanic-checkbox:checked').forEach(cb => {
+                selected.push(parseInt(cb.value));
+            });
+            return selected;
         }
 
         // Сохранить лифт (создать или обновить)
@@ -266,7 +348,6 @@
                 address: formData.get('address'),
                 entrance: formData.get('entrance'),
                 elevator_type: formData.get('elevator_type'),
-                mechanic: formData.get('mechanic'),
                 status: formData.get('status')
             };
 
@@ -298,6 +379,29 @@
                 const result = await response.json();
 
                 if (result.success) {
+                    // Сохраняем связи с механиками
+                    const elevatorId = isEditMode ? document.getElementById('originalId').value : data.elevator_id;
+                    const selectedMechanics = getSelectedMechanics();
+                    
+                    // Удаляем старые связи (для режима редактирования)
+                    if (isEditMode) {
+                        const currentMechanics = await fetch(`/api/elevators/${elevatorId}/mechanics`).then(r => r.json());
+                        for (const mechanic of currentMechanics.mechanics) {
+                            await fetch(`/api/elevators/${elevatorId}/mechanics/${mechanic.id}`, {
+                                method: 'DELETE'
+                            });
+                        }
+                    }
+                    
+                    // Добавляем новые связи
+                    for (const mechanicId of selectedMechanics) {
+                        await fetch(`/api/elevators/${elevatorId}/mechanics`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ mechanic_id: mechanicId })
+                        });
+                    }
+                    
                     showSuccess(isEditMode ? 'Лифт обновлен' : 'Лифт добавлен');
                     modal.hide();
                     setTimeout(() => location.reload(), 500);

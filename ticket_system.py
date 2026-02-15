@@ -72,6 +72,12 @@ def new_ticket_form():
 def elevators_list():
     """Справочник лифтов"""
     elevators = db.get_all_elevators(limit=200)
+    
+    # Загружаем механиков для каждого лифта
+    for elevator in elevators:
+        mechanics = db.get_mechanics_for_elevator(elevator['elevator_id'])
+        elevator['mechanics'] = mechanics
+    
     return render_template('elevators.html', elevators=elevators)
 
 
@@ -468,6 +474,59 @@ def api_update_elevator(elevator_id):
         'message': 'Данные обновлены',
         'elevator': elevator
     })
+
+
+@app.route('/api/elevators/<elevator_id>/mechanics', methods=['GET'])
+def api_get_elevator_mechanics(elevator_id):
+    """Получение механиков, закрепленных за лифтом"""
+    mechanics = db.get_mechanics_for_elevator(elevator_id)
+    return jsonify({
+        'success': True,
+        'count': len(mechanics),
+        'mechanics': mechanics
+    })
+
+
+@app.route('/api/elevators/<elevator_id>/mechanics', methods=['POST'])
+def api_assign_mechanic_to_elevator(elevator_id):
+    """Закрепление механика за лифтом"""
+    data = request.get_json()
+    mechanic_id = data.get('mechanic_id')
+    is_primary = data.get('is_primary', True)
+    
+    if not mechanic_id:
+        return jsonify({
+            'success': False,
+            'error': 'mechanic_id is required'
+        }), 400
+    
+    try:
+        db.assign_mechanic_to_elevator(elevator_id, mechanic_id, is_primary)
+        return jsonify({
+            'success': True,
+            'message': 'Механик закреплен за лифтом'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/elevators/<elevator_id>/mechanics/<int:mechanic_id>', methods=['DELETE'])
+def api_remove_mechanic_from_elevator(elevator_id, mechanic_id):
+    """Удаление механика с лифта"""
+    try:
+        db.remove_mechanic_from_elevator(elevator_id, mechanic_id)
+        return jsonify({
+            'success': True,
+            'message': 'Механик откреплен от лифта'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 
 @app.route('/api/elevators/<elevator_id>', methods=['DELETE'])

@@ -616,6 +616,17 @@ class TicketDatabase:
             conn.commit()
             return True
 
+    def remove_mechanic_from_elevator(self, elevator_id, mechanic_id):
+        """Удаление механика с лифта"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                DELETE FROM elevator_mechanics 
+                WHERE elevator_id = ? AND mechanic_id = ?
+            ''', (elevator_id, mechanic_id))
+            conn.commit()
+            return cursor.rowcount > 0
+
     def get_mechanics_for_elevator(self, elevator_id):
         """Получение механиков, закрепленных за лифтом"""
         with self.get_connection() as conn:
