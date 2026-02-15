@@ -129,7 +129,17 @@
                                             data-entrance="{{ elevator.entrance or '' }}"
                                             data-type="{{ elevator.elevator_type }}">
                                         <strong>{{ elevator.elevator_id }}</strong> - {{ elevator.address }}{% if elevator.entrance %}, подъезд {{ elevator.entrance }}{% endif %}
-                                        <span class="badge bg-secondary float-end">{{ elevator.elevator_type }}</span>
+                                        {% if elevator.elevator_type == 'пассажирский' %}
+                                            <span class="badge bg-primary float-end">{{ elevator.elevator_type }}</span>
+                                        {% elif elevator.elevator_type == 'грузовой' %}
+                                            <span class="badge bg-warning text-dark float-end">{{ elevator.elevator_type }}</span>
+                                        {% elif elevator.elevator_type == 'больничный' %}
+                                            <span class="badge bg-info float-end">{{ elevator.elevator_type }}</span>
+                                        {% elif elevator.elevator_type == 'подъёмник' %}
+                                            <span class="badge bg-success float-end">{{ elevator.elevator_type }}</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary float-end">{{ elevator.elevator_type }}</span>
+                                        {% endif %}
                                     </button>
                                     {% endfor %}
                                 </div>
