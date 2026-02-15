@@ -640,6 +640,19 @@ class TicketDatabase:
             rows = cursor.fetchall()
             return [self._row_to_dict(row) for row in rows]
 
+    def get_mechanic_active_tickets(self, mechanic_id):
+        """Получение активных заявок механика"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT t.* FROM tickets t
+                JOIN elevator_mechanics em ON t.elevator_id = em.elevator_id
+                WHERE em.mechanic_id = ? AND t.status IN ('новая', 'в работе')
+                ORDER BY t.created_at DESC
+            ''', (mechanic_id,))
+            rows = cursor.fetchall()
+            return [self._row_to_dict(row) for row in rows]
+
 
 # Синглтон для доступа к БД
 db = TicketDatabase()

@@ -4,6 +4,7 @@ Flask-based web server for lift repair tickets
 """
 
 import json
+import asyncio
 from datetime import datetime
 from flask import Flask, request, jsonify, render_template, send_from_directory, send_file
 import shutil
@@ -12,6 +13,15 @@ from ticket_db import db
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 app.config['JSON_AS_ASCII'] = False
+
+
+# Импорт функции отправки уведомлений (если доступна)
+try:
+    from notification_service import notify_mechanics_about_ticket
+    TELEGRAM_NOTIFICATIONS_ENABLED = True
+except ImportError:
+    TELEGRAM_NOTIFICATIONS_ENABLED = False
+    print("⚠️ Telegram notifications not available")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -141,6 +151,25 @@ def api_create_ticket():
     
     # Создание заявки
     ticket = db.create_ticket(data)
+    
+    # Отправка уведомления механикам через Telegram
+    if TELEGRAM_NOTIFICATIONS_ENABLED and ticket.get('elevator_id'):
+        try:
+            # Запускаем в отдельном потоке, чтобы не блокировать ответ
+            import threading
+            def send_notification():
+                try:
+                    asyncio.run(notify_mechanics_about_ticket(ticket['id']))
+                except Exception as e:
+                    print(f"❌ Ошибка отправки уведомления: {e}")
+            
+            notification_thread = threading.Thread(target=send_notification)
+            notification_thread.daemon = True
+            notification_thread.start()
+            
+            print(f"✅ Уведомление отправлено механикам для заявки #{ticket['ticket_number']}")
+        except Exception as e:
+            print(f"❌ Ошибка запуска отправки уведомления: {e}")
     
     return jsonify({
         'success': True,
