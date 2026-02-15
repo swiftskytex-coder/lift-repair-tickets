@@ -75,6 +75,13 @@ def elevators_list():
     return render_template('elevators.html', elevators=elevators)
 
 
+@app.route('/mechanics')
+def mechanics_list():
+    """Справочник механиков"""
+    mechanics = db.get_all_mechanics(limit=100)
+    return render_template('mechanics.html', mechanics=mechanics)
+
+
 # ═══════════════════════════════════════════════════════════════
 # API Endpoints
 # ═══════════════════════════════════════════════════════════════
@@ -475,6 +482,98 @@ def api_delete_elevator(elevator_id):
         return jsonify({
             'success': False,
             'error': 'Elevator not found'
+        }), 404
+
+
+# ═══════════════════════════════════════════════════════════════
+# API для управления механиками
+# ═══════════════════════════════════════════════════════════════
+
+@app.route('/api/mechanics', methods=['GET'])
+def api_get_mechanics():
+    """Получение списка механиков"""
+    mechanics = db.get_all_mechanics()
+    return jsonify({
+        'success': True,
+        'count': len(mechanics),
+        'mechanics': mechanics
+    })
+
+
+@app.route('/api/mechanics', methods=['POST'])
+def api_create_mechanic():
+    """Добавление нового механика"""
+    data = request.get_json()
+    
+    if not data or not data.get('name') or not data.get('phone'):
+        return jsonify({
+            'success': False,
+            'error': 'Имя и телефон обязательны'
+        }), 400
+    
+    try:
+        mechanic_id = db.add_mechanic(data)
+        return jsonify({
+            'success': True,
+            'message': 'Механик добавлен',
+            'mechanic_id': mechanic_id
+        }), 201
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/mechanics/<int:mechanic_id>', methods=['GET'])
+def api_get_mechanic(mechanic_id):
+    """Получение информации о механике"""
+    mechanic = db.get_mechanic(mechanic_id)
+    
+    if not mechanic:
+        return jsonify({
+            'success': False,
+            'error': 'Механик не найден'
+        }), 404
+    
+    return jsonify({
+        'success': True,
+        'mechanic': mechanic
+    })
+
+
+@app.route('/api/mechanics/<int:mechanic_id>', methods=['PUT'])
+def api_update_mechanic(mechanic_id):
+    """Обновление данных механика"""
+    data = request.get_json()
+    
+    mechanic = db.update_mechanic(mechanic_id, data)
+    
+    if not mechanic:
+        return jsonify({
+            'success': False,
+            'error': 'Механик не найден'
+        }), 404
+    
+    return jsonify({
+        'success': True,
+        'message': 'Данные обновлены',
+        'mechanic': mechanic
+    })
+
+
+@app.route('/api/mechanics/<int:mechanic_id>', methods=['DELETE'])
+def api_delete_mechanic(mechanic_id):
+    """Удаление механика"""
+    if db.delete_mechanic(mechanic_id):
+        return jsonify({
+            'success': True,
+            'message': 'Механик удален'
+        })
+    else:
+        return jsonify({
+            'success': False,
+            'error': 'Механик не найден'
         }), 404
 
 

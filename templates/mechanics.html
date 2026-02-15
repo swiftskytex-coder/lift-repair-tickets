@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>👷 Справочник механиков - Система заявок на ремонт лифтов</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <style>
+        body {
+            background-color: #f3f4f6;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        
+        .navbar {
+            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+        }
+        
+        .table-card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .search-box {
+            border-radius: 8px;
+            border: 1px solid #d1d5db;
+            padding: 10px 14px;
+        }
+
+        .action-btn {
+            padding: 4px 8px;
+            font-size: 12px;
+        }
+
+        .mechanic-row:hover .action-buttons {
+            opacity: 1;
+        }
+
+        .action-buttons {
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .status-active { background: #d1fae5; color: #065f46; }
+        .status-inactive { background: #fee2e2; color: #991b1b; }
+        .status-on_leave { background: #fef3c7; color: #92400e; }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand d-flex align-items-center gap-2" href="/">
+                <i class="bi bi-tools"></i>
+                <span>Система заявок на ремонт лифтов</span>
+            </a>
+            <div class="d-flex gap-2">
+                <a href="/" class="btn btn-outline-light btn-sm">
+                    <i class="bi bi-house"></i> На главную
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container py-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h4 class="mb-0">
+                <i class="bi bi-people"></i> Справочник механиков
+            </h4>
+            <button class="btn btn-success" onclick="openAddModal()">
+                <i class="bi bi-plus-lg"></i> Добавить механика
+            </button>
+        </div>
+
+        <!-- Поиск -->
+        <div class="mb-4">
+            <input type="text" class="form-control search-box" id="searchInput" 
+                   placeholder="🔍 Поиск по имени или телефону...">
+        </div>
+
+        <!-- Таблица механиков -->
+        <div class="table-card p-4">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>ФИО</th>
+                            <th>Телефон</th>
+                            <th>Telegram</th>
+                            <th>Статус</th>
+                            <th>Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody id="mechanicsTable">
+                        {% for mechanic in mechanics %}
+                        <tr class="mechanic-row" data-id="{{ mechanic.id }}">
+                            <td class="fw-bold">{{ mechanic.id }}</td>
+                            <td>{{ mechanic.name }}</td>
+                            <td>
+                                <a href="tel:{{ mechanic.phone }}" class="text-decoration-none">
+                                    <i class="bi bi-telephone"></i> {{ mechanic.phone }}
+                                </a>
+                            </td>
+                            <td>
+                                {% if mechanic.telegram_username %}
+                                    <a href="https://t.me/{{ mechanic.telegram_username.replace('@', '') }}" target="_blank" class="text-decoration-none">
+                                        <i class="bi bi-telegram"></i> {{ mechanic.telegram_username }}
+                                    </a>
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if mechanic.status == 'active' %}
+                                    <span class="status-badge status-active">Активен</span>
+                                {% elif mechanic.status == 'inactive' %}
+                                    <span class="status-badge status-inactive">Неактивен</span>
+                                {% else %}
+                                    <span class="status-badge status-on_leave">{{ mechanic.status }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="action-buttons">
+                                    <button class="btn btn-sm btn-outline-primary action-btn" 
+                                            onclick="openEditModal({{ mechanic.id }}, '{{ mechanic.name }}', '{{ mechanic.phone }}', '{{ mechanic.telegram_username or '' }}', '{{ mechanic.telegram_chat_id or '' }}', '{{ mechanic.status }}')">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger action-btn" 
+                                            onclick="deleteMechanic({{ mechanic.id }})">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            {% if not mechanics %}
+            <div class="text-center py-5">
+                <i class="bi bi-people text-muted" style="font-size: 48px;"></i>
+                <p class="text-muted mt-3">Нет данных о механиках</p>
+                <button class="btn btn-primary" onclick="openAddModal()">
+                    <i class="bi bi-plus-lg"></i> Добавить первого механика
+                </button>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Модальное окно добавления/редактирования -->
+    <div class="modal fade" id="mechanicModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalTitle">Добавить механика</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="mechanicForm">
+                        <input type="hidden" id="mechanicId" name="id">
+                        <div class="mb-3">
+                            <label class="form-label">ФИО *</label>
+                            <input type="text" class="form-control" id="mechanicName" name="name" required 
+                                   placeholder="Иванов А.П.">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Телефон *</label>
+                            <input type="tel" class="form-control" id="mechanicPhone" name="phone" required 
+                                   placeholder="+79991234567">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Telegram Username</label>
+                            <input type="text" class="form-control" id="mechanicTelegram" name="telegram_username" 
+                                   placeholder="@username">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Telegram Chat ID</label>
+                            <input type="text" class="form-control" id="mechanicChatId" name="telegram_chat_id" 
+                                   placeholder="123456789 (заполняется автоматически)">
+                            <div class="form-text">Заполняется автоматически при регистрации в боте</div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Статус</label>
+                            <select class="form-select" id="mechanicStatus" name="status">
+                                <option value="active">Активен</option>
+                                <option value="inactive">Неактивен</option>
+                                <option value="on_leave">В отпуске</option>
+                            </select>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="button" class="btn btn-primary" id="saveBtn" onclick="saveMechanic()">Сохранить</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast для уведомлений -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3">
+        <div id="successToast" class="toast align-items-center text-white bg-success" role="alert">
+            <div class="d-flex">
+                <div class="toast-body">
+                    <i class="bi bi-check-circle"></i> <span id="successMessage">Успешно!</span>
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        </div>
+        <div id="errorToast" class="toast align-items-center text-white bg-danger" role="alert">
+            <div class="d-flex">
+                <div class="toast-body">
+                    <i class="bi bi-exclamation-circle"></i> <span id="errorMessage">Ошибка!</span>
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let isEditMode = false;
+        const modal = new bootstrap.Modal(document.getElementById('mechanicModal'));
+
+        // Поиск по таблице
+        document.getElementById('searchInput').addEventListener('input', function(e) {
+            const query = e.target.value.toLowerCase();
+            const rows = document.querySelectorAll('.mechanic-row');
+            
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                if (text.includes(query)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        });
+
+        // Открыть модальное окно для добавления
+        function openAddModal() {
+            isEditMode = false;
+            document.getElementById('modalTitle').textContent = 'Добавить механика';
+            document.getElementById('mechanicForm').reset();
+            document.getElementById('mechanicId').value = '';
+            modal.show();
+        }
+
+        // Открыть модальное окно для редактирования
+        function openEditModal(id, name, phone, telegram, chatId, status) {
+            isEditMode = true;
+            document.getElementById('modalTitle').textContent = 'Редактировать механика';
+            document.getElementById('mechanicId').value = id;
+            document.getElementById('mechanicName').value = name;
+            document.getElementById('mechanicPhone').value = phone;
+            document.getElementById('mechanicTelegram').value = telegram;
+            document.getElementById('mechanicChatId').value = chatId;
+            document.getElementById('mechanicStatus').value = status;
+            modal.show();
+        }
+
+        // Сохранить механика
+        async function saveMechanic() {
+            const form = document.getElementById('mechanicForm');
+            const formData = new FormData(form);
+            const data = {
+                name: formData.get('name'),
+                phone: formData.get('phone'),
+                telegram_username: formData.get('telegram_username'),
+                telegram_chat_id: formData.get('telegram_chat_id'),
+                status: formData.get('status')
+            };
+
+            // Валидация
+            if (!data.name || !data.phone) {
+                showError('Заполните обязательные поля');
+                return;
+            }
+
+            try {
+                let response;
+                if (isEditMode) {
+                    const id = document.getElementById('mechanicId').value;
+                    response = await fetch(`/api/mechanics/${id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    });
+                } else {
+                    response = await fetch('/api/mechanics', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    });
+                }
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showSuccess(isEditMode ? 'Механик обновлен' : 'Механик добавлен');
+                    modal.hide();
+                    setTimeout(() => location.reload(), 500);
+                } else {
+                    showError(result.error || 'Ошибка сохранения');
+                }
+            } catch (error) {
+                showError('Ошибка соединения с сервером');
+            }
+        }
+
+        // Удалить механика
+        async function deleteMechanic(id) {
+            if (!confirm(`Удалить механика #${id}?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/mechanics/${id}`, {
+                    method: 'DELETE'
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showSuccess('Механик удален');
+                    setTimeout(() => location.reload(), 500);
+                } else {
+                    showError(result.error || 'Ошибка удаления');
+                }
+            } catch (error) {
+                showError('Ошибка соединения с сервером');
+            }
+        }
+
+        // Показать сообщение об успехе
+        function showSuccess(message) {
+            document.getElementById('successMessage').textContent = message;
+            const toast = new bootstrap.Toast(document.getElementById('successToast'));
+            toast.show();
+        }
+
+        // Показать сообщение об ошибке
+        function showError(message) {
+            document.getElementById('errorMessage').textContent = message;
+            const toast = new bootstrap.Toast(document.getElementById('errorToast'));
+            toast.show();
+        }
+    </script>
+</body>
+</html>

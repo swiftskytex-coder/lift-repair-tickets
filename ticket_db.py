@@ -499,6 +499,49 @@ class TicketDatabase:
     # Методы для работы с механиками
     # ═══════════════════════════════════════════════════════════════
 
+    def get_all_mechanics(self, limit=100):
+        """Получение списка всех механиков"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT * FROM mechanics ORDER BY name LIMIT ?', (limit,))
+            rows = cursor.fetchall()
+            return [self._row_to_dict(row) for row in rows]
+
+    def get_mechanic(self, mechanic_id):
+        """Получение механика по ID"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT * FROM mechanics WHERE id = ?', (mechanic_id,))
+            row = cursor.fetchone()
+            if row:
+                return self._row_to_dict(row)
+            return None
+
+    def add_mechanic(self, data):
+        """Добавление нового механика"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO mechanics (name, phone, telegram_chat_id, telegram_username, status)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (
+                data.get('name'),
+                data.get('phone'),
+                data.get('telegram_chat_id'),
+                data.get('telegram_username'),
+                data.get('status', 'active')
+            ))
+            conn.commit()
+            return cursor.lastrowid
+
+    def delete_mechanic(self, mechanic_id):
+        """Удаление механика"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM mechanics WHERE id = ?', (mechanic_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+
     def get_mechanic_by_phone(self, phone):
         """Получение механика по номеру телефона"""
         with self.get_connection() as conn:
