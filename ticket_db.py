@@ -108,6 +108,32 @@ class TicketDatabase:
             except sqlite3.OperationalError:
                 pass  # Колонка уже существует
             
+            # Таблица механиков
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS mechanics (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    phone TEXT UNIQUE NOT NULL,
+                    telegram_chat_id TEXT,
+                    telegram_username TEXT,
+                    status TEXT DEFAULT 'active',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            # Таблица связи лифтов и механиков
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS elevator_mechanics (
+                    elevator_id TEXT NOT NULL,
+                    mechanic_id INTEGER NOT NULL,
+                    is_primary BOOLEAN DEFAULT 1,
+                    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (elevator_id, mechanic_id),
+                    FOREIGN KEY (elevator_id) REFERENCES elevators(elevator_id) ON DELETE CASCADE,
+                    FOREIGN KEY (mechanic_id) REFERENCES mechanics(id) ON DELETE CASCADE
+                )
+            ''')
+            
             # Индексы для быстрого поиска
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_tickets_priority ON tickets(priority)')
@@ -468,6 +494,97 @@ class TicketDatabase:
             cursor.execute('DELETE FROM elevators WHERE elevator_id = ?', (elevator_id,))
             conn.commit()
             return cursor.rowcount > 0
+
+    # ═══════════════════════════════════════════════════════════════
+    # Методы для работы с механиками
+    # ═══════════════════════════════════════════════════════════════
+
+    def get_mechanic_by_phone(self, phone):
+        """Получение механика по номеру телефона"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT * FROM mechanics WHERE phone = ?', (phone,))
+            row = cursor.fetchone()
+            if row:
+                return self._row_to_dict(row)
+            return None
+
+    def get_mechanic_by_telegram(self, telegram_chat_id):
+        """Получение механика по ID чата Telegram"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT * FROM mechanics WHERE telegram_chat_id = ?', (str(telegram_chat_id),))
+            row = cursor.fetchone()
+            if row:
+                return self._row_to_dict(row)
+            return None
+
+    def update_mechanic(self, mechanic_id, data):
+        """Обновление данных механика"""
+        fields = []
+        values = []
+        
+        for key, value in data.items():
+            if key != 'id':
+                fields.append(f"{key} = ?")
+                values.append(value)
+        
+        if not fields:
+            return None
+        
+        values.append(mechanic_id)
+        
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(f'''
+                UPDATE mechanics 
+                SET {', '.join(fields)}
+                WHERE id = ?
+            ''', values)
+            conn.commit()
+            
+            cursor.execute('SELECT * FROM mechanics WHERE id = ?', (mechanic_id,))
+            row = cursor.fetchone()
+            if row:
+                return self._row_to_dict(row)
+            return None
+
+    def get_mechanic_elevators(self, mechanic_id):
+        """Получение лифтов, закрепленных за механиком"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT e.* FROM elevators e
+                JOIN elevator_mechanics em ON e.elevator_id = em.elevator_id
+                WHERE em.mechanic_id = ?
+                ORDER BY e.address
+            ''', (mechanic_id,))
+            rows = cursor.fetchall()
+            return [self._row_to_dict(row) for row in rows]
+
+    def assign_mechanic_to_elevator(self, elevator_id, mechanic_id, is_primary=True):
+        """Закрепление механика за лифтом"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT OR REPLACE INTO elevator_mechanics (elevator_id, mechanic_id, is_primary)
+                VALUES (?, ?, ?)
+            ''', (elevator_id, mechanic_id, is_primary))
+            conn.commit()
+            return True
+
+    def get_mechanics_for_elevator(self, elevator_id):
+        """Получение механиков, закрепленных за лифтом"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT m.*, em.is_primary FROM mechanics m
+                JOIN elevator_mechanics em ON m.id = em.mechanic_id
+                WHERE em.elevator_id = ? AND m.status = 'active'
+                ORDER BY em.is_primary DESC
+            ''', (elevator_id,))
+            rows = cursor.fetchall()
+            return [self._row_to_dict(row) for row in rows]
 
 
 # Синглтон для доступа к БД
