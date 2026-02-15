@@ -102,6 +102,12 @@ class TicketDatabase:
                 )
             ''')
             
+            # Миграция: добавляем колонку mechanic если её нет
+            try:
+                cursor.execute('ALTER TABLE elevators ADD COLUMN mechanic TEXT')
+            except sqlite3.OperationalError:
+                pass  # Колонка уже существует
+            
             # Индексы для быстрого поиска
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_tickets_priority ON tickets(priority)')
