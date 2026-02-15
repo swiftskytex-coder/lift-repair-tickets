@@ -71,7 +71,7 @@
         <!-- Поиск -->
         <div class="mb-4">
             <input type="text" class="form-control search-box" id="searchInput" 
-                   placeholder="🔍 Поиск по ID, адресу или подъезду...">
+                   placeholder="🔍 Поиск по ID, адресу, механику...">
         </div>
 
         <!-- Таблица лифтов -->
@@ -84,6 +84,7 @@
                             <th>Адрес</th>
                             <th>Подъезд</th>
                             <th>Тип</th>
+                            <th>Механик</th>
                             <th>Статус</th>
                             <th>Действия</th>
                         </tr>
@@ -97,6 +98,7 @@
                             <td>
                                 <span class="badge bg-secondary">{{ elevator.elevator_type }}</span>
                             </td>
+                            <td>{% if elevator.mechanic %}{{ elevator.mechanic }}{% else %}<span class="text-muted">-</span>{% endif %}</td>
                             <td>
                                 {% if elevator.status == 'active' %}
                                     <span class="badge bg-success">Активен</span>
@@ -107,7 +109,7 @@
                             <td>
                                 <div class="action-buttons">
                                     <button class="btn btn-sm btn-outline-primary action-btn" 
-                                            onclick="openEditModal('{{ elevator.elevator_id }}', '{{ elevator.address }}', '{{ elevator.entrance or '' }}', '{{ elevator.elevator_type }}', '{{ elevator.status }}')">
+                                            onclick="openEditModal('{{ elevator.elevator_id }}', '{{ elevator.address }}', '{{ elevator.entrance or '' }}', '{{ elevator.elevator_type }}', '{{ elevator.mechanic or '' }}', '{{ elevator.status }}')">
                                         <i class="bi bi-pencil"></i>
                                     </button>
                                     <button class="btn btn-sm btn-outline-danger action-btn" 
@@ -168,6 +170,11 @@
                                 <option value="больничный">Больничный</option>
                                 <option value="подъёмник">Подъёмник</option>
                             </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Механик</label>
+                            <input type="text" class="form-control" id="elevatorMechanic" name="mechanic" 
+                                   placeholder="например: Иванов">
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Статус</label>
@@ -237,7 +244,7 @@
         }
 
         // Открыть модальное окно для редактирования
-        function openEditModal(id, address, entrance, type, status) {
+        function openEditModal(id, address, entrance, type, mechanic, status) {
             isEditMode = true;
             document.getElementById('modalTitle').textContent = 'Редактировать лифт';
             document.getElementById('originalId').value = id;
@@ -245,6 +252,7 @@
             document.getElementById('elevatorAddress').value = address;
             document.getElementById('elevatorEntrance').value = entrance || '';
             document.getElementById('elevatorType').value = type || 'пассажирский';
+            document.getElementById('elevatorMechanic').value = mechanic || '';
             document.getElementById('elevatorStatus').value = status || 'active';
             modal.show();
         }
@@ -258,6 +266,7 @@
                 address: formData.get('address'),
                 entrance: formData.get('entrance'),
                 elevator_type: formData.get('elevator_type'),
+                mechanic: formData.get('mechanic'),
                 status: formData.get('status')
             };
 

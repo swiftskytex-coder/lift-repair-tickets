@@ -94,6 +94,7 @@ class TicketDatabase:
                     address TEXT NOT NULL,
                     entrance TEXT,
                     elevator_type TEXT DEFAULT 'пассажирский',
+                    mechanic TEXT,
                     description TEXT,
                     status TEXT DEFAULT 'active',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -383,13 +384,14 @@ class TicketDatabase:
             cursor = conn.cursor()
             cursor.execute('''
                 INSERT OR REPLACE INTO elevators 
-                (elevator_id, address, entrance, elevator_type, description, status)
-                VALUES (?, ?, ?, ?, ?, ?)
+                (elevator_id, address, entrance, elevator_type, mechanic, description, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
             ''', (
                 data.get('elevator_id'),
                 data.get('address'),
                 data.get('entrance'),
                 data.get('elevator_type', 'пассажирский'),
+                data.get('mechanic'),
                 data.get('description', ''),
                 data.get('status', 'active')
             ))
@@ -407,17 +409,17 @@ class TicketDatabase:
             return None
 
     def search_elevators(self, query=None, limit=50):
-        """Поиск лифтов по адресу или ID"""
+        """Поиск лифтов по адресу, ID или механику"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
             if query:
                 cursor.execute('''
                     SELECT * FROM elevators 
-                    WHERE elevator_id LIKE ? OR address LIKE ?
+                    WHERE elevator_id LIKE ? OR address LIKE ? OR mechanic LIKE ?
                     ORDER BY address
                     LIMIT ?
-                ''', (f'%{query}%', f'%{query}%', limit))
+                ''', (f'%{query}%', f'%{query}%', f'%{query}%', limit))
             else:
                 cursor.execute('SELECT * FROM elevators ORDER BY address LIMIT ?', (limit,))
             
