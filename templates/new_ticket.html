@@ -147,6 +147,7 @@
                                 <label class="form-label">Адрес *</label>
                                 <input type="text" class="form-control" name="address" id="addressInput" required 
                                        placeholder="Адрес заполнится автоматически">
+                                <div id="elevatorTypeDisplay" class="mt-2"></div>
                             </div>
 
                             <!-- Описание проблемы -->
@@ -272,6 +273,18 @@
                 elevatorIdInput.value = id;
                 elevatorTypeInput.value = type;
                 addressInput.value = fullAddress;
+                
+                // Показываем тип лифта под адресом
+                const typeDisplay = document.getElementById('elevatorTypeDisplay');
+                const typeColors = {
+                    'пассажирский': 'bg-primary',
+                    'грузовой': 'bg-warning text-dark',
+                    'больничный': 'bg-info',
+                    'подъёмник': 'bg-success'
+                };
+                const colorClass = typeColors[type] || 'bg-secondary';
+                typeDisplay.innerHTML = `<span class="badge ${colorClass}">${type}</span>`;
+                
                 elevatorSearch.value = '';
                 elevatorList.style.display = 'none';
             });
