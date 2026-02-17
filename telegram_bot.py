@@ -161,10 +161,56 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(
             query.message.text + "\n\n❌ ЗАЯВКА ОТКЛОНЕНА"
         )
+    
+    elif data.startswith("select_"):
+        ticket_id = int(data.split("_")[1])
+        ticket = db.get_ticket(ticket_id)
+        
+        if not ticket:
+            await query.edit_message_text("❌ Заявка не найдена")
+            return
+        
+        # Сохраняем выбранную заявку
+        user_data[chat_id] = {'selected_ticket': ticket_id, 'status': 'ticket_selected'}
+        
+        await query.edit_message_text(
+            f"✅ Выбрана заявка #{ticket['ticket_number']}\n\n"
+            f"📍 {ticket['address']}\n"
+            f"⚠️ {ticket['priority']}\n\n"
+            f"Отправьте фото ремонта или нажмите /complete для завершения.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("📷 Отправить фото", callback_data=f"photo_{ticket_id}")],
+                [InlineKeyboardButton("✅ Завершить", callback_data=f"complete_{ticket_id}")],
+                [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_tickets")]
+            ])
+        )
+    
+    elif data.startswith("back_to_tickets"):
+        await my_tickets(update, context)
+    
+    elif data.startswith("photo_"):
+        ticket_id = int(data.split("_")[1])
+        user_data[chat_id] = {'ticket_id': ticket_id, 'status': 'awaiting_photos'}
+        await query.edit_message_text(
+            "📸 Отправьте фото ремонта.\n"
+            "После отправки нажмите /complete."
+        )
+    
+    elif data.startswith("complete_"):
+        ticket_id = int(data.split("_")[1])
+        ticket = db.update_ticket_status(ticket_id, 'выполнена', 'telegram_bot')
+        
+        if ticket:
+            await query.edit_message_text(
+                f"✅ Заявка #{ticket['ticket_number']} завершена!\n\n"
+                "Спасибо за работу! 💪"
+            )
+            if chat_id in user_data:
+                del user_data[chat_id]
 
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка фото от механика"""
+    """Обработка фото от механика: скачивает и сохраняет локально"""
     chat_id = update.effective_chat.id
     
     if chat_id not in user_data or user_data[chat_id].get('status') != 'awaiting_photos':
@@ -177,11 +223,26 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo = update.message.photo[-1]
     file_id = photo.file_id
     
-    # Сохраняем фото как комментарий к заявке
-    db.add_comment(ticket_id, 'mechanic', f'[ФОТО] file_id: {file_id}')
+    # Скачиваем фото
+    bot = Bot(token=BOT_TOKEN)
+    file = await bot.get_file(file_id)
+    
+    # Создаем папку для заявки
+    ticket_dir = f"uploads/ticket_{ticket_id}"
+    os.makedirs(ticket_dir, exist_ok=True)
+    
+    # Генерируем имя файла: before_17022026_1234.jpg или after_...
+    timestamp = datetime.now().strftime("%d%m%Y_%H%M")
+    file_path = f"{ticket_dir}/photo_{timestamp}.jpg"
+    
+    # Скачиваем
+    await file.download_to_drive(file_path)
+    
+    # Сохраняем путь в БД вместо file_id
+    db.add_comment(ticket_id, 'mechanic', f'[ФОТО] {file_path}')
     
     await update.message.reply_text(
-        "📸 Фото получено!\n"
+        f"📸 Фото сохранено: {file_path.split('/')[-1]}\n"
         "Отправьте еще фото или нажмите /complete для завершения заявки."
     )
 
@@ -251,7 +312,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def my_tickets(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показать текущие заявки механика"""
+    """Показать текущие заявки механика с кнопками выбора"""
     chat_id = update.effective_chat.id
     mechanic = db.get_mechanic_by_telegram(chat_id)
     
@@ -259,20 +320,26 @@ async def my_tickets(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Вы не зарегистрированы. Отправьте /start")
         return
     
-    # Получаем заявки механика со статусом 'в работе'
     tickets = db.get_mechanic_active_tickets(mechanic['id'])
     
-    if tickets:
-        message = f"📋 Ваши активные заявки ({len(tickets)}):\n\n"
-        for ticket in tickets:
-            message += f"🚨 #{ticket['ticket_number']}\n"
-            message += f"📍 {ticket['address']}\n"
-            message += f"⚠️ {ticket['priority']}\n"
-            message += f"📝 {ticket['problem_description'][:50]}...\n\n"
-    else:
-        message = "ℹ️ У вас нет активных заявок"
+    if not tickets:
+        await update.message.reply_text("ℹ️ У вас нет активных заявок", reply_markup=get_main_keyboard())
+        return
     
-    await update.message.reply_text(message, reply_markup=get_main_keyboard())
+    message = "📋 Ваши активные заявки:\n\n"
+    keyboard = []
+    
+    for i, ticket in enumerate(tickets, 1):
+        message += f"{i}. 🚨 #{ticket['ticket_number']}\n"
+        message += f"   📍 {ticket['address'][:30]}...\n"
+        message += f"   ⚠️ {ticket['priority']}\n\n"
+        
+        # Кнопка для выбора заявки
+        keyboard.append([InlineKeyboardButton(f"Выбрать #{ticket['ticket_number']}", callback_data=f"select_{ticket['id']}")])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(message, reply_markup=reply_markup)
 
 
 async def handle_text_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -292,8 +359,9 @@ async def handle_text_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE
         await handle_phone(update, context)
 
 
-async def setup_bot_commands(application):
-    """Установка команд меню бота"""
+async def post_init(application):
+    """Инициализация после запуска бота"""
+    # Устанавливаем команды меню
     commands = [
         ("start", "Регистрация в боте"),
         ("help", "Показать справку"),
@@ -313,10 +381,7 @@ def main():
         print("2. Замените ВАШ_ТОКЕН_БОТА на реальный токен")
         return
     
-    application = Application.builder().token(BOT_TOKEN).build()
-    
-    # Устанавливаем команды меню
-    application.job_queue.run_once(lambda context: asyncio.create_task(setup_bot_commands(application)), when=0)
+    application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
     
     # Обработчики команд
     application.add_handler(CommandHandler("start", start))
@@ -331,7 +396,7 @@ def main():
     print("🤖 Telegram бот запущен!")
     print("Отправьте /start боту для регистрации")
     
-    application.run_polling()
+    application.run_polling(drop_pending_updates=True)
 
 
 if __name__ == "__main__":
