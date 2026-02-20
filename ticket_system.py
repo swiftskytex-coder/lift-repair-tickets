@@ -223,6 +223,32 @@ def api_create_ticket():
                 'success': False, 
                 'error': f'Missing required field: {field}'
             }), 400
+            
+    # ЗАЩИТА ОТ ДУБЛИКАТОВ (Backend)
+    # Проверяем, создавалась ли такая же заявка за последние 5 минут
+    try:
+        # Ищем заявки по адресу за последние 5 минут
+        recent_tickets = db.search_tickets({
+            'address': data['address'],
+            'date_from': (datetime.now() - timedelta(minutes=5)).strftime('%Y-%m-%d %H:%M:%S')
+        }, limit=5)
+        
+        for recent in recent_tickets:
+            # Сравниваем описание (игнорируя пробелы и регистр)
+            desc1 = recent['problem_description'].strip().lower()
+            desc2 = data['problem_description'].strip().lower()
+            
+            # Если описание совпадает и заявка не закрыта
+            if desc1 == desc2 and recent['status'] not in ['выполнена', 'отменена']:
+                print(f"⚠️ Обнаружен дубликат заявки #{recent['ticket_number']}. Возвращаем существующую.")
+                return jsonify({
+                    'success': True,
+                    'message': 'Такая заявка уже существует (защита от дубликатов)',
+                    'ticket': recent,
+                    'is_duplicate': True
+                }), 200
+    except Exception as e:
+        print(f"⚠️ Ошибка проверки дубликатов: {e}")
     
     # Создание заявки
     ticket = db.create_ticket(data)

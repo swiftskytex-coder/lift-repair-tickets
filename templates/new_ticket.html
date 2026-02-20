@@ -304,6 +304,12 @@
         document.getElementById('ticketForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             
+            // Блокируем кнопку отправки
+            const submitBtn = this.querySelector('button[type="submit"]');
+            const originalBtnText = submitBtn.innerHTML;
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Сохранение...';
+            
             const formData = new FormData(this);
             const data = Object.fromEntries(formData.entries());
             
@@ -320,6 +326,13 @@
                 
                 if (result.success) {
                     const toast = new bootstrap.Toast(document.getElementById('successToast'));
+                    
+                    // Если это дубликат, сообщим об этом
+                    if (result.is_duplicate) {
+                        document.querySelector('#successToast .toast-body').innerHTML = 
+                            '<i class="bi bi-info-circle"></i> Заявка уже была создана ранее!';
+                    }
+                    
                     toast.show();
                     
                     setTimeout(() => {
@@ -329,11 +342,19 @@
                     document.getElementById('errorMessage').textContent = result.error || 'Ошибка при создании заявки';
                     const toast = new bootstrap.Toast(document.getElementById('errorToast'));
                     toast.show();
+                    
+                    // Разблокируем кнопку при ошибке
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = originalBtnText;
                 }
             } catch (error) {
                 document.getElementById('errorMessage').textContent = 'Ошибка соединения с сервером';
                 const toast = new bootstrap.Toast(document.getElementById('errorToast'));
                 toast.show();
+                
+                // Разблокируем кнопку при ошибке
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalBtnText;
             }
         });
     </script>
