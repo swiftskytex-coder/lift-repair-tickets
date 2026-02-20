@@ -5,7 +5,7 @@ Flask-based web server for lift repair tickets
 
 import json
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, render_template, send_from_directory, send_file
 import shutil
 from pathlib import Path
@@ -33,10 +33,16 @@ def index():
     """Главная страница - дашборд оператора"""
     stats = db.get_statistics()
     recent_tickets = db.search_tickets(limit=10)
+    
+    # Получить текущего аварийного механика
+    today = datetime.now().strftime('%Y-%m-%d')
+    oncall_today = db.get_oncall_mechanic_for_date(today)
+    
     return render_template('operator_dashboard.html', 
                          stats=stats, 
                          tickets=recent_tickets,
-                         now=datetime.now())
+                         now=datetime.now(),
+                         oncall_today=oncall_today)
 
 
 @app.route('/tickets')
@@ -98,6 +104,75 @@ def mechanics_list():
     return render_template('mechanics.html', mechanics=mechanics)
 
 
+@app.route('/oncall')
+def oncall_schedule():
+    """Страница расписания аварийных дежурств"""
+    today = datetime.now().strftime('%Y-%m-%d')
+    tomorrow = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
+    
+    oncall_today = db.get_oncall_mechanic_for_date(today)
+    oncall_tomorrow = db.get_oncall_mechanic_for_date(tomorrow)
+    
+    # Получить всех активных механиков для выбора
+    all_mechanics = db.get_all_mechanics(limit=100)
+    
+    # Получить историю дежурств (последние 10)
+    with db.get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT o.date, m.name, m.phone, m.telegram_username 
+            FROM oncall_mechanics o
+            JOIN mechanics m ON o.mechanic_id = m.id
+            ORDER BY o.date DESC LIMIT 10
+        ''')
+        history = []
+        for row in cursor.fetchall():
+            history.append({
+                'date': row[0],
+                'name': row[1],
+                'phone': row[2],
+                'telegram_username': row[3]
+            })
+    
+    return render_template('oncall_schedule.html', 
+                         today=today, 
+                         tomorrow=tomorrow,
+                         oncall_today=oncall_today,
+                         oncall_tomorrow=oncall_tomorrow,
+                         mechanics=all_mechanics,
+                         history=history)
+
+
+@app.route('/api/oncall', methods=['POST'])
+def api_set_oncall():
+    """API: Назначить аварийного механика на конкретную дату"""
+    data = request.get_json()
+    mechanic_id = data.get('mechanic_id')
+    date_str = data.get('date')
+    
+    if not mechanic_id or not date_str:
+        return jsonify({
+            'success': False,
+            'error': 'mechanic_id и date обязательны'
+        }), 400
+    
+    # Проверить, что механик существует и активен
+    mechanic = db.get_mechanic(mechanic_id)
+    if not mechanic or mechanic.get('status') != 'active':
+        return jsonify({
+            'success': False,
+            'error': 'Механик не найден или не активен'
+        }), 400
+    
+    # Назначить
+    db.set_oncall_mechanic(mechanic_id, date_str)
+    
+    return jsonify({
+        'success': True,
+        'message': f'Механик {mechanic["name"]} назначен на {date_str}'
+    })
+
+
 # ═══════════════════════════════════════════════════════════════
 # API Endpoints
 # ═══════════════════════════════════════════════════════════════
@@ -151,6 +226,9 @@ def api_create_ticket():
     
     # Создание заявки
     ticket = db.create_ticket(data)
+    
+    if not ticket:
+        return jsonify({'success': False, 'error': 'Ошибка создания заявки в БД'}), 500
     
     # Отправка уведомления механикам через Telegram
     if TELEGRAM_NOTIFICATIONS_ENABLED and ticket.get('elevator_id'):

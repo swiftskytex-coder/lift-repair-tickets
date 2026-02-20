@@ -20,6 +20,8 @@ class TicketDatabase:
     def get_connection(self):
         """Получение соединения с БД"""
         conn = sqlite3.connect(self.db_path)
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA journal_mode = WAL")
         conn.row_factory = sqlite3.Row
         return conn
     
@@ -140,6 +142,17 @@ class TicketDatabase:
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_tickets_created ON tickets(created_at)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_elevators_elevator_id ON elevators(elevator_id)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_elevators_address ON elevators(address)')
+            
+            # Таблица аварийных механиков на смену
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS oncall_mechanics (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    mechanic_id INTEGER NOT NULL,
+                    date DATE UNIQUE NOT NULL,
+                    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (mechanic_id) REFERENCES mechanics(id) ON DELETE CASCADE
+                )
+            ''')
             
             conn.commit()
     
@@ -653,6 +666,122 @@ class TicketDatabase:
             rows = cursor.fetchall()
             return [self._row_to_dict(row) for row in rows]
 
+    # ═══════════════════════════════════════════════════════════════
+    # Методы для работы с аварийными дежурствами
+    # ═══════════════════════════════════════════════════════════════
+
+    def get_oncall_mechanic_for_date(self, date_str):
+        """Получить аварийного механика на указанную дату"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT m.* FROM mechanics m
+                JOIN oncall_mechanics o ON m.id = o.mechanic_id
+                WHERE o.date = ?
+            ''', (date_str,))
+            row = cursor.fetchone()
+            return self._row_to_dict(row) if row else None
+
+    def set_oncall_mechanic(self, mechanic_id, date_str):
+        """Назначить механика на дежурство на дату"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT OR REPLACE INTO oncall_mechanics (mechanic_id, date)
+                VALUES (?, ?)
+            ''', (mechanic_id, date_str))
+            conn.commit()
+
+    def get_next_oncall_mechanic(self):
+        """Получить следующего аварийного механика (по очереди)"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT m.id, m.name, m.phone, m.telegram_username FROM mechanics m
+                WHERE m.status = 'active'
+                ORDER BY m.id
+            ''')
+            all_mechanics = [self._row_to_dict(r) for r in cursor.fetchall()]
+
+            if not all_mechanics:
+                return None
+
+            # Найти последнего, кто дежурил
+            cursor.execute('''
+                SELECT mechanic_id FROM oncall_mechanics
+                ORDER BY date DESC LIMIT 1
+            ''')
+            last = cursor.fetchone()
+
+            if not last:
+                return all_mechanics[0]  # Первый, если ещё никто не дежурил
+
+            last_id = last[0]
+            # Найти следующего в списке (циклически)
+            ids = [m['id'] for m in all_mechanics]
+            try:
+                idx = (ids.index(last_id) + 1) % len(ids)
+                return all_mechanics[idx]
+            except ValueError:
+                return all_mechanics[0]
+
 
 # Синглтон для доступа к БД
 db = TicketDatabase()
+
+
+# ═══════════════════════════════════════════════════════════════
+# ПЕРВИЧНАЯ ИНИЦИАЛИЗАЦИЯ: Заполнение тестовыми данными
+# ═══════════════════════════════════════════════════════════════
+if __name__ == "__main__":
+    # Создаём базу
+    db = TicketDatabase()
+    
+    # Добавляем механиков
+    mechanics = [
+        {"name": "Иванов И.И.", "phone": "+79001112233", "telegram_username": "ivanov_i"},
+        {"name": "Петров П.П.", "phone": "+79002223344", "telegram_username": "petrov_p"},
+        {"name": "Сидоров С.С.", "phone": "+79003334455", "telegram_username": "sidorov_s"},
+        {"name": "Кузнецов К.К.", "phone": "+79004445566", "telegram_username": "kuznetsov_k"},
+    ]
+    
+    for m in mechanics:
+        db.add_mechanic(m)
+    
+    # Добавляем лифты
+    elevators = [
+        {"elevator_id": "Л1-01", "address": "ул. Ленина, 1", "elevator_type": "пассажирский"},
+        {"elevator_id": "Л1-02", "address": "ул. Ленина, 2", "elevator_type": "пассажирский"},
+        {"elevator_id": "Л2-01", "address": "ул. Пушкина, 1", "elevator_type": "грузовой"},
+    ]
+    
+    for e in elevators:
+        db.add_elevator(e)
+    
+    # Закрепляем механиков за лифтами
+    db.assign_mechanic_to_elevator("Л1-01", 1)
+    db.assign_mechanic_to_elevator("Л1-02", 2)
+    db.assign_mechanic_to_elevator("Л2-01", 3)
+    
+    # Назначаем аварийных дежурных на ближайшие дни
+    from datetime import datetime, timedelta
+    today = datetime.now().strftime('%Y-%m-%d')
+    tomorrow = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
+    
+    db.set_oncall_mechanic(1, today)    # Сегодня: Иванов
+    db.set_oncall_mechanic(2, tomorrow) # Завтра: Петров
+    
+    print("✅ База данных инициализирована с тестовыми данными")
+    
+    today_mechanic = db.get_oncall_mechanic_for_date(today)
+    tomorrow_mechanic = db.get_oncall_mechanic_for_date(tomorrow)
+    
+    if today_mechanic:
+        print(f"   Сегодня дежурит: {today_mechanic['name']}")
+    else:
+        print("   Сегодня дежурный не назначен")
+        
+    if tomorrow_mechanic:
+        print(f"   Завтра дежурит: {tomorrow_mechanic['name']}")
+    else:
+        print("   Завтра дежурный не назначен")

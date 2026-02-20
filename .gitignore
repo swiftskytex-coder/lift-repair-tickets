@@ -13,6 +13,8 @@ instance/
 *.db
 *.sqlite
 *.sqlite3
+backup/
+backups/
 
 # Logs
 *.log
@@ -36,3 +38,6 @@ Thumbs.db
 *.tmp
 *.temp
 .env
+
+# User Uploads
+uploads/

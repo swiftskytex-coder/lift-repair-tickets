@@ -232,6 +232,11 @@
                         Механики
                     </a>
                     
+                    <a href="/oncall" class="btn btn-outline-danger quick-action-btn">
+                        <i class="bi bi-calendar-check"></i>
+                        Аварийные дежурства
+                    </a>
+                    
                     <button class="btn btn-outline-success quick-action-btn" onclick="createBackup()">
                         <i class="bi bi-download"></i>
                         Сделать бэкап
@@ -242,6 +247,18 @@
                         Восстановить
                     </button>
                 </div>
+                
+                <!-- Аварийный механик сегодня -->
+                {% if oncall_today %}
+                <div class="mt-4 p-3 bg-light rounded-3">
+                    <div class="d-flex align-items-center mb-2">
+                        <i class="bi bi-person-badge text-danger me-2"></i>
+                        <strong class="text-danger">Аварийный механик</strong>
+                    </div>
+                    <div class="fw-bold">{{ oncall_today.name }}</div>
+                    <div class="text-muted small">{{ oncall_today.phone }}</div>
+                </div>
+                {% endif %}
 
                 <!-- Распределение по приоритетам -->
                 <div class="mt-4">
