@@ -52,6 +52,7 @@
         .bg-gradient-success { background: linear-gradient(135deg, #10b981, #059669); }
         .bg-gradient-warning { background: linear-gradient(135deg, #f59e0b, #d97706); }
         .bg-gradient-danger { background: linear-gradient(135deg, #ef4444, #dc2626); }
+        .bg-gradient-info { background: linear-gradient(135deg, #0ea5e9, #0284c7); }
         
         .ticket-card {
             background: white;
@@ -164,18 +165,18 @@
                         <i class="bi bi-clock"></i>
                     </div>
                     <div>
-                        <div class="text-muted small">Новых</div>
-                        <div class="h3 mb-0">{{ stats.new }}</div>
+                        <div class="text-muted small">Поступило (с 08:00)</div>
+                        <div class="h3 mb-0">{{ shift_stats.new }}</div>
                     </div>
                 </div>
             </div>
             <div class="col-md-3 mb-3">
                 <div class="stat-card d-flex align-items-center gap-3">
                     <div class="stat-icon bg-gradient-info text-white">
-                        <i class="bi bi-gear"></i>
+                        <i class="bi bi-tools"></i>
                     </div>
                     <div>
-                        <div class="text-muted small">В работе</div>
+                        <div class="text-muted small">В работе (всего)</div>
                         <div class="h3 mb-0">{{ stats.in_progress }}</div>
                     </div>
                 </div>
@@ -186,8 +187,8 @@
                         <i class="bi bi-check-circle"></i>
                     </div>
                     <div>
-                        <div class="text-muted small">Выполнено</div>
-                        <div class="h3 mb-0">{{ stats.completed }}</div>
+                        <div class="text-muted small">Выполнено (с 08:00)</div>
+                        <div class="h3 mb-0">{{ shift_stats.completed }}</div>
                     </div>
                 </div>
             </div>
@@ -215,6 +216,11 @@
                     <a href="/tickets?priority=срочный" class="btn btn-danger quick-action-btn">
                         <i class="bi bi-exclamation-triangle"></i>
                         Срочные заявки
+                    </a>
+                    
+                    <a href="/tickets" class="btn btn-outline-primary quick-action-btn">
+                        <i class="bi bi-list-ul"></i>
+                        Все заявки ({{ stats.total }})
                     </a>
                     
                     <a href="/tickets" class="btn btn-outline-secondary quick-action-btn">
@@ -319,7 +325,14 @@
                                 <span class="fw-bold text-primary">#{{ ticket.ticket_number }}</span>
                                 <span class="priority-badge priority-{{ ticket.priority }} ms-2">{{ ticket.priority }}</span>
                             </div>
-                            <span class="status-badge status-{{ ticket.status.replace(' ', '-') }}">{{ ticket.status }}</span>
+                            <div class="text-end">
+                                <span class="status-badge status-{{ ticket.status.replace(' ', '-') }}">{{ ticket.status }}</span>
+                                {% if ticket.mechanic_name %}
+                                    <div class="small mt-1 fw-bold text-primary">
+                                        <i class="bi bi-person-workspace"></i> {{ ticket.mechanic_name }}
+                                    </div>
+                                {% endif %}
+                            </div>
                         </div>
                         
                         <div class="mb-2">
@@ -394,6 +407,12 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        // Инициализация тултипов
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+          return new bootstrap.Tooltip(tooltipTriggerEl)
+        })
+
         // Автообновление каждые 30 секунд
         setInterval(() => {
             location.reload();
@@ -401,19 +420,22 @@
 
         // Создание бэкапа
         async function createBackup() {
+            const btn = event.target.closest('button');
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Создаётся...';
+
             try {
                 const response = await fetch('/api/backup/download');
                 
-                if (response.ok) {
-                    // Получаем имя файла из заголовка или генерируем
+                if (response.ok && response.headers.get('content-type').includes('zip')) {
                     const contentDisposition = response.headers.get('content-disposition');
-                    let filename = 'tickets_backup.db';
+                    let filename = 'full_backup.zip';
                     if (contentDisposition) {
-                        const match = contentDisposition.match(/filename="(.+)"/);
-                        if (match) filename = match[1];
+                        const match = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+                        if (match) filename = match[1].replace(/['"]/g, '');
                     }
                     
-                    // Скачиваем файл
                     const blob = await response.blob();
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
@@ -423,15 +445,21 @@
                     a.click();
                     document.body.removeChild(a);
                     window.URL.revokeObjectURL(url);
-                    
-                    // Показываем уведомление
-                    alert('✅ Бэкап успешно создан и скачан!');
+                    alert('✅ Бэкап скачан: ' + filename);
                 } else {
-                    const result = await response.json();
-                    alert('❌ Ошибка: ' + (result.error || 'Не удалось создать бэкап'));
+                    const text = await response.text();
+                    try {
+                        const result = JSON.parse(text);
+                        alert('❌ Ошибка: ' + (result.error || 'Не удалось создать бэкап'));
+                    } catch {
+                        alert('❌ Ошибка сервера: ' + text.substring(0, 200));
+                    }
                 }
             } catch (error) {
-                alert('❌ Ошибка соединения: ' + error.message);
+                alert('❌ Ошибка: ' + error.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
             }
         }
 
@@ -455,8 +483,8 @@
                 return;
             }
             
-            if (!file.name.endsWith('.db')) {
-                alert('❌ Неподдерживаемый формат. Загрузите .db файл');
+            if (!file.name.endsWith('.zip') && !file.name.endsWith('.db')) {
+                alert('❌ Неподдерживаемый формат. Загрузите .zip или .db файл');
                 return;
             }
             
@@ -473,14 +501,24 @@
                     body: formData
                 });
                 
-                const result = await response.json();
-                
-                if (result.success) {
-                    alert('✅ ' + result.message);
-                    closeRestoreModal();
-                    fileInput.value = '';
+                const contentType = response.headers.get("content-type");
+                if (contentType && contentType.indexOf("application/json") !== -1) {
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        alert('✅ ' + result.message);
+                        closeRestoreModal();
+                        fileInput.value = '';
+                        if (result.reload) {
+                            setTimeout(() => location.reload(), 2000);
+                        }
+                    } else {
+                        alert('❌ Ошибка: ' + (result.error || 'Не удалось восстановить бэкап'));
+                    }
                 } else {
-                    alert('❌ Ошибка: ' + (result.error || 'Не удалось восстановить бэкап'));
+                    const text = await response.text();
+                    console.error('Server Error:', text);
+                    alert('❌ Критическая ошибка сервера (см. консоль): ' + text.substring(0, 150));
                 }
             } catch (error) {
                 alert('❌ Ошибка соединения: ' + error.message);

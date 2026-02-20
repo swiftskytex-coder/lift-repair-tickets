@@ -5,6 +5,9 @@ Flask-based web server for lift repair tickets
 
 import json
 import asyncio
+import zipfile
+import io
+import sqlite3
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, render_template, send_from_directory, send_file
 import shutil
@@ -13,6 +16,21 @@ from ticket_db import db
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 app.config['JSON_AS_ASCII'] = False
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Глобальный обработчик исключений для возврата JSON"""
+    import traceback
+    traceback.print_exc()
+    # Если запрос ожидает JSON, возвращаем JSON
+    if request.is_json or request.path.startswith('/api/'):
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+    # Иначе стандартный HTML
+    return str(e), 500
 
 
 # Импорт функции отправки уведомлений (если доступна)
@@ -32,14 +50,39 @@ except ImportError:
 def index():
     """Главная страница - дашборд оператора"""
     stats = db.get_statistics()
-    recent_tickets = db.search_tickets(limit=10)
+    
+    # Расчет текущей смены (08:00 - 08:00)
+    now = datetime.now()
+    if now.hour < 8:
+        shift_start = (now - timedelta(days=1)).replace(hour=8, minute=0, second=0, microsecond=0)
+    else:
+        shift_start = now.replace(hour=8, minute=0, second=0, microsecond=0)
+    shift_end = shift_start + timedelta(days=1)
+    
+    shift_stats = db.get_shift_statistics(
+        shift_start.strftime('%Y-%m-%d %H:%M:%S'),
+        shift_end.strftime('%Y-%m-%d %H:%M:%S')
+    )
+    
+    # Исключаем выполненные и отмененные заявки из списка последних
+    recent_tickets = db.search_tickets(limit=10, exclude_status=['выполнена', 'отменена'])
+    
+    # Обогащаем заявки именами механиков
+    for ticket in recent_tickets:
+        if ticket.get('assigned_to'):
+            try:
+                mechanic = db.get_mechanic(int(ticket['assigned_to']))
+                ticket['mechanic_name'] = mechanic['name'] if mechanic else 'Неизвестный'
+            except:
+                ticket['mechanic_name'] = 'Ошибка ID'
     
     # Получить текущего аварийного механика
     today = datetime.now().strftime('%Y-%m-%d')
     oncall_today = db.get_oncall_mechanic_for_date(today)
     
     return render_template('operator_dashboard.html', 
-                         stats=stats, 
+                         stats=stats,
+                         shift_stats=shift_stats,
                          tickets=recent_tickets,
                          now=datetime.now(),
                          oncall_today=oncall_today)
@@ -775,34 +818,54 @@ def api_delete_mechanic(mechanic_id):
 
 @app.route('/api/backup', methods=['POST'])
 def api_create_backup():
-    """Создание бэкапа базы данных"""
+    """Создание полного бэкапа (БД + фото)"""
     try:
-        # Создаем папку для бэкапов если её нет
-        backup_dir = Path('backups')
+        base_dir = Path(app.root_path)
+        backup_dir = base_dir / 'backups'
         backup_dir.mkdir(exist_ok=True)
         
-        # Формируем имя файла с датой и временем
-        from datetime import datetime
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        backup_filename = f'tickets_backup_{timestamp}.db'
+        backup_filename = f'full_backup_{timestamp}.zip'
         backup_path = backup_dir / backup_filename
         
-        # Копируем базу данных
-        db_path = Path('instance/tickets.db')
-        if db_path.exists():
-            shutil.copy2(db_path, backup_path)
-            return jsonify({
-                'success': True,
-                'message': 'Бэкап создан успешно',
-                'filename': backup_filename,
-                'path': str(backup_path)
-            })
-        else:
-            return jsonify({
-                'success': False,
-                'error': 'База данных не найдена'
-            }), 404
+        # 1. Создаем дамп базы данных
+        db_path = base_dir / 'instance' / 'tickets.db'
+        
+        # Подключаемся к текущей БД
+        source_conn = sqlite3.connect(str(db_path))
+        backup_conn = sqlite3.connect(':memory:')
+        source_conn.backup(backup_conn)
+        source_conn.close()
+        
+        # Сбрасываем данные из памяти в файл
+        with zipfile.ZipFile(backup_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            temp_db_path = backup_dir / f'temp_{timestamp}.db'
+            file_conn = sqlite3.connect(str(temp_db_path))
+            backup_conn.backup(file_conn)
+            file_conn.close()
+            backup_conn.close()
+            
+            # Добавляем БД в архив
+            zipf.write(temp_db_path, arcname='tickets.db')
+            temp_db_path.unlink()
+            
+            # 2. Добавляем папку uploads
+            uploads_dir = base_dir / 'uploads'
+            if uploads_dir.exists():
+                for file_path in uploads_dir.rglob('*'):
+                    if file_path.is_file():
+                        zipf.write(file_path, arcname=str(file_path.relative_to(base_dir)))
+        
+        return jsonify({
+            'success': True,
+            'message': 'Полный бэкап создан успешно',
+            'filename': backup_filename,
+            'path': str(backup_path)
+        })
+
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({
             'success': False,
             'error': str(e)
@@ -811,76 +874,161 @@ def api_create_backup():
 
 @app.route('/api/backup/download', methods=['GET'])
 def api_download_backup():
-    """Скачивание текущей базы данных"""
+    """Скачивание полного бэкапа прямо из памяти (без записи на диск)"""
     try:
-        db_path = Path('instance/tickets.db')
-        if db_path.exists():
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            return send_file(
-                db_path,
-                mimetype='application/x-sqlite3',
-                as_attachment=True,
-                download_name=f'tickets_backup_{timestamp}.db'
-            )
-        else:
-            return jsonify({
-                'success': False,
-                'error': 'База данных не найдена'
-            }), 404
+        base_dir = Path(app.root_path)
+        db_path = base_dir / 'instance' / 'tickets.db'
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        backup_filename = f'full_backup_{timestamp}.zip'
+
+        # 1. Снимаем дамп БД в память (безопасно при WAL)
+        mem_db = sqlite3.connect(':memory:')
+        src = sqlite3.connect(str(db_path))
+        src.backup(mem_db)
+        src.close()
+
+        # Сохраняем in-memory БД во временный файл
+        import tempfile, os
+        with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as tmp:
+            tmp_path = tmp.name
+        tmp_conn = sqlite3.connect(tmp_path)
+        mem_db.backup(tmp_conn)
+        tmp_conn.close()
+        mem_db.close()
+
+        # 2. Собираем ZIP в памяти
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            zipf.write(tmp_path, arcname='tickets.db')
+            
+            uploads_dir = base_dir / 'uploads'
+            if uploads_dir.exists():
+                for file_path in uploads_dir.rglob('*'):
+                    if file_path.is_file():
+                        zipf.write(file_path, arcname=str(file_path.relative_to(base_dir)))
+
+        # Удаляем временный файл
+        os.unlink(tmp_path)
+
+        # 3. Отдаём ZIP из памяти
+        zip_buffer.seek(0)
+        return send_file(
+            zip_buffer,
+            mimetype='application/zip',
+            as_attachment=True,
+            download_name=backup_filename
+        )
+
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/backup/restore', methods=['POST'])
 def api_restore_backup():
-    """Восстановление базы данных из бэкапа"""
+    """Восстановление из ZIP (БД + фото) или DB"""
     try:
+        base_dir = Path(app.root_path)
+        
         if 'file' not in request.files:
-            return jsonify({
-                'success': False,
-                'error': 'Файл не загружен'
-            }), 400
+            return jsonify({'success': False, 'error': 'Файл не загружен'}), 400
         
         file = request.files['file']
         filename = file.filename
         
         if not filename:
-            return jsonify({
-                'success': False,
-                'error': 'Файл не выбран'
-            }), 400
+            return jsonify({'success': False, 'error': 'Файл не выбран'}), 400
+            
+        is_zip = filename.lower().endswith('.zip')
+        is_db = filename.lower().endswith('.db')
         
-        # Проверяем расширение файла
-        if not filename.endswith('.db'):
-            return jsonify({
-                'success': False,
-                'error': 'Неподдерживаемый формат файла. Загрузите .db файл'
-            }), 400
+        if not (is_zip or is_db):
+            return jsonify({'success': False, 'error': 'Формат должен быть .zip или .db'}), 400
+            
+        instance_dir = base_dir / 'instance'
+        instance_dir.mkdir(exist_ok=True)
+        db_path = instance_dir / 'tickets.db'
         
-        db_path = Path('instance/tickets.db')
-        
-        # Создаем резервную копию текущей базы перед восстановлением
+        # Бэкап текущего состояния перед восстановлением
         if db_path.exists():
-            backup_before = f'instance/tickets_before_restore.db'
-            shutil.copy2(db_path, backup_before)
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            shutil.copy2(db_path, instance_dir / f'tickets_pre_restore_{timestamp}.db')
+            
+        if is_zip:
+            # Работа с архивом
+            backup_dir = base_dir / 'backups'
+            backup_dir.mkdir(exist_ok=True)
+            temp_extract_dir = backup_dir / 'temp_extract'
+            
+            # Удаляем старую временную папку, если есть
+            if temp_extract_dir.exists():
+                shutil.rmtree(temp_extract_dir)
+            temp_extract_dir.mkdir(parents=True, exist_ok=True)
+            
+            zip_path = temp_extract_dir / 'backup.zip'
+            file.save(str(zip_path))
+            
+            with zipfile.ZipFile(str(zip_path), 'r') as zip_ref:
+                zip_ref.extractall(temp_extract_dir)
+                
+            # Ищем и восстанавливаем БД
+            restored_db = temp_extract_dir / 'tickets.db'
+            if restored_db.exists():
+                # Удаляем WAL файлы чтобы не было конфликта версий
+                for ext in ['.db-wal', '.db-shm']:
+                    wal_file = db_path.with_suffix(ext)
+                    if wal_file.exists():
+                        wal_file.unlink()
+                
+                # Если файл базы существует, удаляем его перед перемещением нового
+                if db_path.exists():
+                    db_path.unlink()
+                
+                shutil.move(str(restored_db), str(db_path))
+            else:
+                return jsonify({'success': False, 'error': 'В архиве нет tickets.db'}), 400
+                
+            # Восстанавливаем uploads
+            restored_uploads = temp_extract_dir / 'uploads'
+            if restored_uploads.exists():
+                target_uploads = base_dir / 'uploads'
+                if target_uploads.exists():
+                    shutil.rmtree(target_uploads)
+                
+                # Перемещаем папку (теперь точно в корень)
+                shutil.move(str(restored_uploads), str(base_dir))
+                
+            # Чистим за собой
+            if temp_extract_dir.exists():
+                shutil.rmtree(temp_extract_dir)
+            
+        else:
+            # Старый формат (.db)
+            # Удаляем WAL файлы чтобы не было конфликта версий
+            for ext in ['.db-wal', '.db-shm']:
+                wal_file = db_path.with_suffix(ext)
+                if wal_file.exists():
+                    wal_file.unlink()
+            
+            file.save(str(db_path))
         
-        # Восстанавливаем базу из загруженного файла
-        file.save(str(db_path))
-        
+        # Триггер перезапуска сервера (для dev_runner.py)
+        try:
+            Path(__file__).touch()
+        except:
+            pass
+            
         return jsonify({
-            'success': True,
-            'message': 'Бэкап успешно восстановлен! Перезапустите сервер для применения изменений.',
-            'note': 'Сервер необходимо перезапустить вручную'
+            'success': True, 
+            'message': 'Восстановление завершено. Сервер перезагружается...',
+            'reload': True
         })
-        
+
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 # ═══════════════════════════════════════════════════════════════
