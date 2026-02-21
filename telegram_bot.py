@@ -144,12 +144,34 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("accept_"):
         ticket_id = int(data.split("_")[1])
         
-        # Обновляем статус заявки
+        # Проверяем, не взята ли заявка уже
+        ticket = db.get_ticket(ticket_id)
+        if not ticket:
+            await query.edit_message_text("❌ Заявка не найдена")
+            return
+            
+        if ticket.get('assigned_to') and ticket['status'] != 'новая':
+            # Пытаемся узнать имя того, кто взял
+            try:
+                assigned_mechanic = db.get_mechanic(int(ticket['assigned_to']))
+                name = assigned_mechanic['name'] if assigned_mechanic else "другим механиком"
+            except:
+                name = "другим механиком"
+                
+            await query.edit_message_text(f"⚠️ Заявка уже взята в работу {name}")
+            return
+
+        # Получаем данные текущего механика
+        mechanic = db.get_mechanic_by_telegram(chat_id)
+        mechanic_id = str(mechanic['id']) if mechanic else None
+        
+        # Обновляем статус заявки и назначаем исполнителя
+        db.update_ticket(ticket_id, {'assigned_to': mechanic_id}, 'telegram_bot')
         ticket = db.update_ticket_status(ticket_id, 'в работе', 'telegram_bot')
         
         if ticket:
             await query.edit_message_text(
-                query.message.text + "\n\n✅ ЗАЯВКА ПРИНЯТА\n"
+                query.message.text + "\n\n✅ ЗАЯВКА ПРИНЯТА ВАМИ\n"
                 "Отправьте фото до/после ремонта."
             )
             
@@ -158,8 +180,15 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     elif data.startswith("reject_"):
         ticket_id = int(data.split("_")[1])
+        
+        # Логируем отказ
+        mechanic = db.get_mechanic_by_telegram(chat_id)
+        name = mechanic['name'] if mechanic else "Неизвестный"
+        
+        db.add_comment(ticket_id, 'system', f"❌ Механик {name} отказался от заявки")
+        
         await query.edit_message_text(
-            query.message.text + "\n\n❌ ЗАЯВКА ОТКЛОНЕНА"
+            query.message.text + "\n\n❌ ВЫ ОТКАЗАЛИСЬ ОТ ЗАЯВКИ"
         )
     
     elif data.startswith("select_"):
@@ -181,10 +210,31 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("📷 Отправить фото", callback_data=f"photo_{ticket_id}")],
                 [InlineKeyboardButton("✅ Завершить", callback_data=f"complete_{ticket_id}")],
+                [InlineKeyboardButton("❌ Не смог выполнить", callback_data=f"cant_fix_{ticket_id}")],
                 [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_tickets")]
             ])
         )
-    
+
+    elif data.startswith("cant_fix_"):
+        ticket_id = int(data.split("_")[1])
+        
+        # Логируем неудачу
+        mechanic = db.get_mechanic_by_telegram(chat_id)
+        name = mechanic['name'] if mechanic else "Неизвестный"
+        
+        db.add_comment(ticket_id, 'system', f"⚠️ Механик {name} не смог выполнить заявку и вернул её в очередь.")
+        
+        # Сбрасываем статус на "новая" и убираем исполнителя
+        # ВАЖНО: assigned_to ставим NULL или пустую строку, чтобы другие могли взять
+        db.update_ticket(ticket_id, {'assigned_to': None}, 'telegram_bot')
+        db.update_ticket_status(ticket_id, 'новая', 'telegram_bot', notes=f"Вернута механиком {name}")
+        
+        await query.edit_message_text(
+            f"⚠️ Заявка возвращена в статус 'Новая'.\nОператор уведомлен."
+        )
+        if chat_id in user_data:
+            del user_data[chat_id]
+
     elif data.startswith("back_to_tickets"):
         await my_tickets(update, context)
     
@@ -314,16 +364,23 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def my_tickets(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показать текущие заявки механика с кнопками выбора"""
     chat_id = update.effective_chat.id
+    
+    # Определяем объект для отправки ответа (callback или обычное сообщение)
+    if update.callback_query:
+        reply_func = update.callback_query.message.reply_text
+    else:
+        reply_func = update.message.reply_text
+
     mechanic = db.get_mechanic_by_telegram(chat_id)
     
     if not mechanic:
-        await update.message.reply_text("❌ Вы не зарегистрированы. Отправьте /start")
+        await reply_func("❌ Вы не зарегистрированы. Отправьте /start")
         return
     
     tickets = db.get_mechanic_active_tickets(mechanic['id'])
     
     if not tickets:
-        await update.message.reply_text("ℹ️ У вас нет активных заявок", reply_markup=get_main_keyboard())
+        await reply_func("ℹ️ У вас нет активных заявок", reply_markup=get_main_keyboard())
         return
     
     message = "📋 Ваши активные заявки:\n\n"
@@ -339,7 +396,7 @@ async def my_tickets(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await update.message.reply_text(message, reply_markup=reply_markup)
+    await reply_func(message, reply_markup=reply_markup)
 
 
 async def handle_text_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):

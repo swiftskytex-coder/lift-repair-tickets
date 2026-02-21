@@ -7,6 +7,7 @@ import sys
 sys.path.insert(0, '/Users/swiftpanaev/KIRO/test4')
 
 import asyncio
+from datetime import datetime
 from ticket_db import db
 from telegram_bot import send_ticket_to_mechanic, BOT_TOKEN
 
@@ -26,11 +27,32 @@ async def notify_mechanics_about_ticket(ticket_id):
         print(f"⚠️ Заявка {ticket_id} без привязки к лифту")
         return False
     
-    # Получаем механиков, закрепленных за этим лифтом
+    # 1. Получаем механиков, закрепленных за этим лифтом
     mechanics = db.get_mechanics_for_elevator(elevator_id)
     
+    # Если механиков нет, создаем пустой список (чтобы добавить аварийного)
     if not mechanics:
-        print(f"⚠️ Нет механиков для лифта {elevator_id}")
+        mechanics = []
+        print(f"ℹ️ Нет закрепленных механиков для лифта {elevator_id}")
+
+    # 2. Добавляем АВАРИЙНОГО МЕХАНИКА, если это не плановое обслуживание
+    # Приоритет 'низкий' означает плановое обслуживание
+    if ticket.get('priority') != 'низкий':
+        try:
+            today = datetime.now().strftime('%Y-%m-%d')
+            oncall_mechanic = db.get_oncall_mechanic_for_date(today)
+            
+            if oncall_mechanic:
+                # Проверяем, нет ли его уже в списке (по ID)
+                assigned_ids = [m['id'] for m in mechanics]
+                if oncall_mechanic['id'] not in assigned_ids:
+                    print(f"🚨 Добавляем аварийного механика: {oncall_mechanic['name']}")
+                    mechanics.append(oncall_mechanic)
+        except Exception as e:
+            print(f"⚠️ Ошибка получения аварийного механика: {e}")
+
+    if not mechanics:
+        print(f"⚠️ Нет получателей для уведомления")
         return False
     
     # Отправляем уведомление каждому механику

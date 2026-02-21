@@ -233,7 +233,7 @@ class TicketDatabase:
                 return self._row_to_dict(row)
             return None
     
-    def search_tickets(self, filters=None, limit=50, offset=0):
+    def search_tickets(self, filters=None, limit=50, offset=0, exclude_status=None):
         """Поиск заявок с фильтрами"""
         query = 'SELECT * FROM tickets WHERE 1=1'
         params = []
@@ -262,6 +262,15 @@ class TicketDatabase:
             if 'date_to' in filters:
                 query += ' AND created_at <= ?'
                 params.append(filters['date_to'])
+        
+        if exclude_status:
+            if isinstance(exclude_status, list):
+                placeholders = ', '.join(['?'] * len(exclude_status))
+                query += f' AND status NOT IN ({placeholders})'
+                params.extend(exclude_status)
+            else:
+                query += ' AND status != ?'
+                params.append(exclude_status)
         
         query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?'
         params.extend([limit, offset])
@@ -364,6 +373,35 @@ class TicketDatabase:
             rows = cursor.fetchall()
             return [self._row_to_dict(row) for row in rows]
     
+    def get_shift_statistics(self, start_time, end_time):
+        """Получение статистики за смену"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Новые за смену (созданные)
+            cursor.execute('''
+                SELECT COUNT(*) FROM tickets 
+                WHERE created_at >= ? AND created_at < ?
+            ''', (start_time, end_time))
+            new_count = cursor.fetchone()[0]
+            
+            # Выполненные за смену (у которых completed_at попал в диапазон)
+            # Для старых записей, где нет completed_at, можно искать по updated_at + status='выполнена'
+            cursor.execute('''
+                SELECT COUNT(*) FROM tickets 
+                WHERE status = 'выполнена' 
+                AND (
+                    (completed_at >= ? AND completed_at < ?) OR
+                    (completed_at IS NULL AND updated_at >= ? AND updated_at < ?)
+                )
+            ''', (start_time, end_time, start_time, end_time))
+            completed_count = cursor.fetchone()[0]
+            
+            return {
+                'new': new_count,
+                'completed': completed_count
+            }
+
     def get_statistics(self):
         """Получение статистики заявок"""
         with self.get_connection() as conn:
