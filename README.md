@@ -1,19 +1,25 @@
 # 🚀 ЗАПУСК ПОСЛЕ ПЕРЕЗАГРУЗКИ
 
-Для запуска системы (веб-сервер + Telegram бот) используйте одну команду:
+**Команды для запуска и остановки:**
 
 ```bash
-# 1. Активируйте виртуальное окружение
+# Остановка всех процессов
+pkill -f "python.*ticket_system"
+pkill -f "python.*telegram_bot"
+pkill -f "python.*dev_runner"
+
+# Запуск
+cd /Users/swiftpanaev/KIRO/test4
 source venv/bin/activate
-
-# 2. Установите зависимости (если нужно)
-pip install watchdog
-
-# 3. Запустите единый скрипт управления
-python dev_runner.py
+python3 dev_runner.py
 ```
 
-Скрипт `dev_runner.py` автоматически запустит Flask-сервер и Telegram-бота, а также будет перезагружать их при изменении кода.
+**После запуска:**
+- Веб-интерфейс: http://localhost:8081
+- Telegram бот: найдите своего бота в Telegram и отправьте /start
+
+**Горячая перезагрузка:**
+`dev_runner.py` автоматически перезапускает Flask и бота при изменении `.py` или `.html` файлов.
 
 ---
 

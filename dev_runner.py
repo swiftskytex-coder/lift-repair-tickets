@@ -11,7 +11,8 @@ class ReloadHandler(FileSystemEventHandler):
         self.last_reload = time.time()
 
     def on_modified(self, event):
-        if event.src_path.endswith(".py"):
+        # Отслеживаем изменения Python-кода и HTML-шаблонов
+        if event.src_path.endswith(".py") or event.src_path.endswith(".html"):
             # Дебаунс (защита от частых перезапусков)
             if time.time() - self.last_reload > 1:
                 print(f"🔄 Изменения в {event.src_path}. Перезапуск {self.process_name}...")

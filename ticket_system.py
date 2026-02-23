@@ -16,6 +16,8 @@ from ticket_db import db
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 app.config['JSON_AS_ASCII'] = False
+app.config['TEMPLATES_AUTO_RELOAD'] = True
+app.jinja_env.auto_reload = True
 
 from werkzeug.exceptions import HTTPException
 
@@ -79,9 +81,37 @@ def index():
     oncall_today = db.get_oncall_mechanic_for_date(today)
     oncall_today_id = oncall_today['id'] if oncall_today else None
     
-    # Обогащаем заявки: имя механика, статус Telegram, флаг "аварийный сегодня"
+    # Обогащаем заявки: имя механика, статус Telegram, флаг "аварийный сегодня", время в статусе
     for ticket in recent_tickets:
         ticket['is_oncall_today'] = False
+        
+        # Расчёт времени в статусе
+        try:
+            created = datetime.fromisoformat(str(ticket['created_at']).replace(' ', 'T'))
+            # Для статуса "в работе" используем updated_at
+            if ticket['status'] == 'в работе' and ticket.get('updated_at'):
+                status_time = datetime.fromisoformat(str(ticket['updated_at']).replace(' ', 'T'))
+            else:
+                status_time = created
+                
+            delta = now - status_time
+            total_seconds = int(delta.total_seconds())
+            
+            if total_seconds < 60:
+                ticket['time_in_status'] = f"{total_seconds} сек"
+            elif total_seconds < 3600:
+                minutes = total_seconds // 60
+                ticket['time_in_status'] = f"{minutes} мин"
+            elif total_seconds < 86400:
+                hours = total_seconds // 3600
+                minutes = (total_seconds % 3600) // 60
+                ticket['time_in_status'] = f"{hours} ч {minutes} мин"
+            else:
+                days = total_seconds // 86400
+                ticket['time_in_status'] = f"{days} дн"
+        except:
+            ticket['time_in_status'] = ""
+        
         if ticket.get('assigned_to'):
             try:
                 mechanic = db.get_mechanic(int(ticket['assigned_to']))
@@ -92,6 +122,12 @@ def index():
             except:
                 ticket['mechanic_name'] = 'Ошибка ID'
                 ticket['mechanic_has_telegram'] = False
+    
+    # Отладка: выводим информацию о заявках
+    print("=== DEBUG recent_tickets ===")
+    for t in recent_tickets:
+        print(f"Ticket #{t['ticket_number']} (id={t['id']}): status={t['status']}, assigned_to={t.get('assigned_to')}, mechanic_name={t.get('mechanic_name')}, is_oncall={t.get('is_oncall_today')}")
+    print("============================")
     
     return render_template('operator_dashboard.html', 
                          stats=stats,
