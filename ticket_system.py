@@ -17,6 +17,13 @@ from ticket_db import db
 app = Flask(__name__, template_folder='templates', static_folder='static')
 app.config['JSON_AS_ASCII'] = False
 
+from werkzeug.exceptions import HTTPException
+
+@app.errorhandler(HTTPException)
+def handle_http_exception(e):
+    """Обработчик HTTP-ошибок (404, 500 и др.) – всегда возвращаем JSON"""
+    return jsonify({'success': False, 'error': e.description}), e.code
+
 @app.errorhandler(Exception)
 def handle_exception(e):
     """Глобальный обработчик исключений для возврата JSON"""
