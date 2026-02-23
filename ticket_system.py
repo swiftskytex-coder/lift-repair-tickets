@@ -74,20 +74,24 @@ def index():
     # Исключаем выполненные и отмененные заявки из списка последних
     recent_tickets = db.search_tickets(limit=10, exclude_status=['выполнена', 'отменена'])
     
-    # Обогащаем заявки именами механиков и статусом Telegram
+    # Получить текущего аварийного механика ДО обогащения заявок
+    today = datetime.now().strftime('%Y-%m-%d')
+    oncall_today = db.get_oncall_mechanic_for_date(today)
+    oncall_today_id = oncall_today['id'] if oncall_today else None
+    
+    # Обогащаем заявки: имя механика, статус Telegram, флаг "аварийный сегодня"
     for ticket in recent_tickets:
+        ticket['is_oncall_today'] = False
         if ticket.get('assigned_to'):
             try:
                 mechanic = db.get_mechanic(int(ticket['assigned_to']))
                 ticket['mechanic_name'] = mechanic['name'] if mechanic else 'Неизвестный'
                 ticket['mechanic_has_telegram'] = bool(mechanic and mechanic.get('telegram_chat_id'))
+                if oncall_today_id and mechanic and mechanic['id'] == oncall_today_id:
+                    ticket['is_oncall_today'] = True
             except:
                 ticket['mechanic_name'] = 'Ошибка ID'
                 ticket['mechanic_has_telegram'] = False
-    
-    # Получить текущего аварийного механика
-    today = datetime.now().strftime('%Y-%m-%d')
-    oncall_today = db.get_oncall_mechanic_for_date(today)
     
     return render_template('operator_dashboard.html', 
                          stats=stats,
