@@ -329,7 +329,7 @@
                              <div class="text-end">
                                  <span class="status-badge status-{{ ticket.status.replace(' ', '-') }}">{{ ticket.status }}</span>
                                  {% if ticket.time_in_status %}
-                                     {% if 'дн' in ticket.time_in_status or 'ч' in ticket.time_in_status and ticket.time_in_status.split 'ч'|first|int > 2 %}
+                                     {% if 'дн' in ticket.time_in_status %}
                                          <div class="small text-danger fw-bold"><i class="bi bi-clock"></i> {{ ticket.time_in_status }}</div>
                                      {% else %}
                                          <div class="small text-muted"><i class="bi bi-clock"></i> {{ ticket.time_in_status }}</div>
