@@ -126,7 +126,7 @@ def index():
     # Отладка: выводим информацию о заявках
     print("=== DEBUG recent_tickets ===")
     for t in recent_tickets:
-        print(f"Ticket #{t['ticket_number']} (id={t['id']}): status={t['status']}, assigned_to={t.get('assigned_to')}, mechanic_name={t.get('mechanic_name')}, is_oncall={t.get('is_oncall_today')}")
+        print(f"Ticket #{t['ticket_number']}: status={t['status']}, assigned_to=[{t.get('assigned_to')}], mechanic=[{t.get('mechanic_name')}]")
     print("============================")
     
     return render_template('operator_dashboard.html', 
