@@ -63,6 +63,7 @@ async def notify_mechanics_about_ticket(ticket_id):
             success = await send_ticket_to_mechanic(ticket_id, telegram_chat_id)
             if success:
                 sent_count += 1
+                db.send_ticket_to_mechanic(ticket_id, mechanic['id'])
                 print(f"✅ Отправлено механику {mechanic['name']}")
             else:
                 print(f"❌ Не удалось отправить механику {mechanic['name']}")

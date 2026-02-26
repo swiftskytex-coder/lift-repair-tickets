@@ -318,36 +318,55 @@
                     </a>
                 </div>
 
+                <div class="btn-group mb-3" role="group">
+                    <input type="radio" class="btn-check" name="statusFilter" id="filterAll" checked autocomplete="off">
+                    <label class="btn btn-sm btn-outline-primary" for="filterAll">Все</label>
+                    
+                    <input type="radio" class="btn-check" name="statusFilter" id="filterSent" autocomplete="off">
+                    <label class="btn btn-sm btn-outline-secondary" for="filterSent">📤 Отправлено</label>
+                    
+                    <input type="radio" class="btn-check" name="statusFilter" id="filterAccepted" autocomplete="off">
+                    <label class="btn btn-sm btn-outline-success" for="filterAccepted">✅ Принято</label>
+                    
+                    <input type="radio" class="btn-check" name="statusFilter" id="filterRejected" autocomplete="off">
+                    <label class="btn btn-sm btn-outline-danger" for="filterRejected">❌ Отказано</label>
+                </div>
+
                 {% if tickets %}
                     {% for ticket in tickets %}
-                    <div class="ticket-card priority-{{ ticket.priority }}" onclick="window.location.href='/ticket/{{ ticket.id }}'">
+                    <div class="ticket-card priority-{{ ticket.priority }}" 
+                         data-was-sent="{{ 'true' if ticket.was_sent else 'false' }}"
+                         data-was-accepted="{{ 'true' if ticket.was_accepted else 'false' }}"
+                         data-was-rejected="{{ 'true' if ticket.was_rejected else 'false' }}"
+                         onclick="window.location.href='/ticket/{{ ticket.id }}'">
                         <div class="d-flex justify-content-between align-items-start mb-2">
                             <div>
                                 <span class="fw-bold text-primary">#{{ ticket.ticket_number }}</span>
                                 <span class="priority-badge priority-{{ ticket.priority }} ms-2">{{ ticket.priority }}</span>
                             </div>
                              <div class="text-end">
-                                 <span class="status-badge status-{{ ticket.status.replace(' ', '-') }}">{{ ticket.status }}</span>
-                                  {% if ticket.time_in_status %}
-                                      {% if 'дн' in ticket.time_in_status %}
-                                          <div class="small text-danger fw-bold"><i class="bi bi-clock"></i> {{ ticket.time_in_status }}</div>
-                                      {% else %}
-                                          <div class="small text-muted"><i class="bi bi-clock"></i> {{ ticket.time_in_status }}</div>
-                                      {% endif %}
-                                  {% endif %}
-                                  {% if ticket.mechanic_name %}
-                                      <div class="small mt-1 fw-bold text-primary d-flex align-items-center justify-content-end gap-1">
-                                          <i class="bi bi-person-workspace"></i> {{ ticket.mechanic_name }}
-                                          {% if ticket.is_oncall_today %}
-                                              <span class="badge bg-danger" style="font-size: 9px;">Аварийный</span>
-                                          {% else %}
-                                              <span class="badge bg-info" style="font-size: 9px;">Линейный</span>
-                                          {% endif %}
-                                          {% if ticket.mechanic_has_telegram %}
-                                              <span class="badge bg-success" style="font-size: 9px;">TG</span>
-                                          {% else %}
-                                              <span class="badge bg-warning text-dark" style="font-size: 9px;">Без TG</span>
-                                          {% endif %}
+                                  {% if ticket.mechanics_list %}
+                                      <div class="small d-flex flex-column gap-1 align-items-end">
+                                          {% for mech in ticket.mechanics_list %}
+                                              <div class="d-flex align-items-center gap-1">
+                                                  <i class="bi bi-person-fill text-primary"></i>
+                                                  <span class="text-primary">{{ mech.name }}</span>
+                                                  {% if mech.status == 'Принял' %}
+                                                      <span class="badge bg-success" style="font-size: 9px;"><i class="bi bi-check-circle"></i> Принял</span>
+                                                  {% elif mech.status == 'Аварийный' %}
+                                                      <span class="badge bg-danger" style="font-size: 9px;"><i class="bi bi-exclamation-triangle"></i> Аварийный</span>
+                                                  {% else %}
+                                                      <span class="badge bg-info" style="font-size: 9px;"><i class="bi bi-person"></i> Линейный</span>
+                                                  {% endif %}
+                                                   {% if mech.tg_status == 'accepted' %}
+                                                       <span class="badge bg-success" style="font-size: 9px;"><i class="bi bi-check-circle"></i> Принято</span>
+                                                   {% elif mech.tg_status == 'rejected' %}
+                                                       <span class="badge bg-warning text-dark" style="font-size: 9px;"><i class="bi bi-x-circle"></i> Отказ</span>
+                                                   {% else %}
+                                                       <span class="badge bg-secondary" style="font-size: 9px;"><i class="bi bi-send"></i> Отправлено</span>
+                                                   {% endif %}
+                                              </div>
+                                          {% endfor %}
                                       </div>
                                   {% else %}
                                       <div class="small mt-1 text-muted fst-italic">Не назначен</div>
@@ -356,11 +375,11 @@
                         </div>
                         
                         <div class="mb-2">
+                            {% if ticket.elevator_id %}
+                            <span class="badge bg-light text-dark me-1">{{ ticket.elevator_id }}</span>
+                            {% endif %}
                             <i class="bi bi-geo-alt"></i>
                             <span class="small">{{ ticket.address }}</span>
-                            {% if ticket.elevator_id %}
-                            <span class="badge bg-light text-dark ms-2">{{ ticket.elevator_id }}</span>
-                            {% endif %}
                         </div>
                         
                         <div class="text-muted small">
@@ -432,6 +451,25 @@
         var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
           return new bootstrap.Tooltip(tooltipTriggerEl)
         })
+
+        // Фильтр заявок
+        document.querySelectorAll('input[name="statusFilter"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                const filter = this.id.replace('filter', '').toLowerCase();
+                document.querySelectorAll('.ticket-card').forEach(card => {
+                    const wasSent = card.dataset.wasSent === 'true';
+                    const wasAccepted = card.dataset.wasAccepted === 'true';
+                    const wasRejected = card.dataset.wasRejected === 'true';
+                    
+                    let show = true;
+                    if (filter === 'sent') show = wasSent && !wasAccepted;
+                    else if (filter === 'accepted') show = wasAccepted;
+                    else if (filter === 'rejected') show = wasRejected;
+                    
+                    card.style.display = show ? '' : 'none';
+                });
+            });
+        });
 
         // Автообновление каждые 30 секунд
         setInterval(() => {

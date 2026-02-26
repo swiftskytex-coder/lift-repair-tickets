@@ -79,11 +79,136 @@ def index():
     # Получить текущего аварийного механика ДО обогащения заявок
     today = datetime.now().strftime('%Y-%m-%d')
     oncall_today = db.get_oncall_mechanic_for_date(today)
+    if not oncall_today:
+        oncall_today = db.get_next_oncall_mechanic()
     oncall_today_id = oncall_today['id'] if oncall_today else None
     
-    # Обогащаем заявки: имя механика, статус Telegram, флаг "аварийный сегодня", время в статусе
+    # Обогащаем заявки: список механиков с статусами, время в статусе
     for ticket in recent_tickets:
         ticket['is_oncall_today'] = False
+        
+        # Получаем список механиков для этого лифта
+        elevator_mechanics = []
+        if ticket.get('elevator_id'):
+            try:
+                elevator_mechanics = db.get_mechanics_for_elevator(ticket['elevator_id'])
+            except:
+                pass
+        
+        # Формируем список механиков со статусами
+        mechanics_list = []
+        assigned_id = ticket.get('assigned_to')
+        
+        for mech in elevator_mechanics:
+            mech_info = {
+                'name': mech['name'],
+                'id': mech.get('id'),
+                'has_telegram': bool(mech.get('telegram_chat_id')),
+                'is_oncall': bool(oncall_today_id and mech['id'] == oncall_today_id),
+                'status': None  # Принял, Линейный, Аварийный
+            }
+            
+            # Определяем статус
+            if assigned_id and str(assigned_id) == str(mech['id']):
+                mech_info['status'] = 'Принял'
+            elif mech_info['is_oncall']:
+                mech_info['status'] = 'Аварийный'
+            else:
+                mech_info['status'] = 'Линейный'
+                
+            mechanics_list.append(mech_info)
+        
+        # Также добавляем аварийного механика, если он не в списке линейных
+        if oncall_today and oncall_today_id:
+            already_in_list = any(m['id'] == oncall_today_id for m in elevator_mechanics)
+            if not already_in_list:
+                mechanics_list.append({
+                    'name': oncall_today['name'],
+                    'has_telegram': bool(oncall_today.get('telegram_chat_id')),
+                    'is_oncall': True,
+                    'status': 'Аварийный'
+                })
+        
+        # Получаем статусы из таблицы ticket_mechanics (реальный ответ из Telegram)
+        ticket_mech_statuses = {}
+        if ticket.get('id'):
+            try:
+                ticket_mechs = db.get_ticket_mechanics(ticket['id'])
+                for tm in ticket_mechs:
+                    ticket_mech_statuses[str(tm['mechanic_id'])] = tm
+            except:
+                pass
+        
+        # Обновляем статусы механиков на основе реальных данных из Telegram
+        for mech_info in mechanics_list:
+            mech_id = mech_info.get('id')
+            if mech_id:
+                tm = ticket_mech_statuses.get(str(mech_id))
+                if tm:
+                    if tm.get('status') == 'accepted':
+                        mech_info['tg_status'] = 'accepted'
+                    elif tm.get('status') == 'rejected':
+                        mech_info['tg_status'] = 'rejected'
+                    else:
+                        mech_info['tg_status'] = 'sent'
+                else:
+                    mech_info['tg_status'] = 'sent'
+            else:
+                mech_info['tg_status'] = 'sent'
+        
+        # Добавляем принявшего механика, если его нет в списке
+        if ticket.get('assigned_to'):
+            already_in_list = any(str(m.get('id')) == str(ticket['assigned_to']) for m in elevator_mechanics)
+            if not already_in_list:
+                try:
+                    mech = db.get_mechanic(int(ticket['assigned_to']))
+                    if mech:
+                        tm = ticket_mech_statuses.get(str(mech['id']), {})
+                        mechanics_list.append({
+                            'name': mech['name'],
+                            'id': mech['id'],
+                            'has_telegram': bool(mech.get('telegram_chat_id')),
+                            'is_oncall': False,
+                            'status': 'Принял',
+                            'tg_status': tm.get('status', 'accepted') if tm else 'accepted'
+                        })
+                except:
+                    pass
+        
+        ticket['mechanics_list'] = mechanics_list
+        
+        # Статус отправки/ответа
+        ticket['was_sent'] = len(mechanics_list) > 0
+        ticket['was_accepted'] = False
+        ticket['accepted_by'] = None
+        
+        # Кто принял
+        if ticket.get('assigned_to'):
+            ticket['was_accepted'] = True
+            try:
+                mech = db.get_mechanic(int(ticket['assigned_to']))
+                ticket['accepted_by'] = mech['name'] if mech else None
+            except:
+                pass
+        
+        # Проверяем отказы по комментариям
+        ticket['was_rejected'] = False
+        ticket['rejected_by'] = None
+        if ticket.get('id'):
+            try:
+                comments = db.get_comments(ticket['id'])
+                for c in comments:
+                    text = str(c.get('text', '')).lower()
+                    if 'отказался' in text:
+                        ticket['was_rejected'] = True
+                        # Извлекаем имя из комментария
+                        import re
+                        match = re.search(r'механик\s+(.+?)\s+отказался', str(c.get('text', '')), re.IGNORECASE)
+                        if match:
+                            ticket['rejected_by'] = match.group(1)
+                        break
+            except:
+                pass
         
         # Расчёт времени в статусе
         try:
@@ -203,7 +328,11 @@ def oncall_schedule():
     tomorrow = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
     
     oncall_today = db.get_oncall_mechanic_for_date(today)
+    if not oncall_today:
+        oncall_today = db.get_next_oncall_mechanic()
     oncall_tomorrow = db.get_oncall_mechanic_for_date(tomorrow)
+    if not oncall_tomorrow:
+        oncall_tomorrow = db.get_next_oncall_mechanic()
     
     # Получить всех активных механиков для выбора
     all_mechanics = db.get_all_mechanics(limit=100)

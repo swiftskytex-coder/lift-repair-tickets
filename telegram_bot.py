@@ -136,47 +136,35 @@ async def send_ticket_to_mechanic(ticket_id, mechanic_chat_id):
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка нажатий на кнопки"""
     query = update.callback_query
-    await query.answer()
+    data = query.data
     
     chat_id = update.effective_chat.id
-    data = query.data
     
     if data.startswith("accept_"):
         ticket_id = int(data.split("_")[1])
+        print(f"DEBUG: accept_ pressed for ticket {ticket_id}, chat_id={chat_id}")
         
-        # Проверяем, не взята ли заявка уже
-        ticket = db.get_ticket(ticket_id)
-        if not ticket:
-            await query.edit_message_text("❌ Заявка не найдена")
-            return
-            
-        if ticket.get('assigned_to') and ticket['status'] != 'новая':
-            # Пытаемся узнать имя того, кто взял
-            try:
-                assigned_mechanic = db.get_mechanic(int(ticket['assigned_to']))
-                name = assigned_mechanic['name'] if assigned_mechanic else "другим механиком"
-            except:
-                name = "другим механиком"
-                
-            await query.edit_message_text(f"⚠️ Заявка уже взята в работу {name}")
-            return
-
         # Получаем данные текущего механика
         mechanic = db.get_mechanic_by_telegram(chat_id)
-        mechanic_id = str(mechanic['id']) if mechanic else None
+        print(f"DEBUG: mechanic = {mechanic}")
         
-        # Обновляем статус заявки и назначаем исполнителя
-        db.update_ticket(ticket_id, {'assigned_to': mechanic_id}, 'telegram_bot')
-        ticket = db.update_ticket_status(ticket_id, 'в работе', 'telegram_bot')
+        if not mechanic:
+            print(f"DEBUG: mechanic not found!")
+            return
         
-        if ticket:
-            await query.edit_message_text(
-                query.message.text + "\n\n✅ ЗАЯВКА ПРИНЯТА ВАМИ\n"
-                "Отправьте фото до/после ремонта."
-            )
-            
-            # Сохраняем ID заявки для приема фото
-            user_data[chat_id] = {'ticket_id': ticket_id, 'status': 'awaiting_photos'}
+        # Обновляем статус заявки
+        db.update_ticket(ticket_id, {'assigned_to': str(mechanic['id'])}, 'telegram_bot')
+        db.update_ticket_status(ticket_id, 'в работе', 'telegram_bot')
+        
+        # Логируем принятие
+        db.accept_ticket(ticket_id, mechanic['id'])
+        
+        await query.edit_message_text(
+            query.message.text + "\n\n✅ ЗАЯВКА ПРИНЯТА"
+        )
+        
+        # Сохраняем ID заявки для приема фото
+        user_data[chat_id] = {'ticket_id': ticket_id, 'status': 'awaiting_photos'}
     
     elif data.startswith("reject_"):
         ticket_id = int(data.split("_")[1])
@@ -186,6 +174,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         name = mechanic['name'] if mechanic else "Неизвестный"
         
         db.add_comment(ticket_id, 'system', f"❌ Механик {name} отказался от заявки")
+        
+        # Логируем отказ в таблице
+        if mechanic:
+            db.reject_ticket(ticket_id, mechanic['id'])
         
         await query.edit_message_text(
             query.message.text + "\n\n❌ ВЫ ОТКАЗАЛИСЬ ОТ ЗАЯВКИ"
@@ -387,9 +379,18 @@ async def my_tickets(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = []
     
     for i, ticket in enumerate(tickets, 1):
+        status_emoji = "⏳"
+        status_text = "Новая"
+        if ticket.get('status') == 'в работе':
+            status_emoji = "🔧"
+            status_text = "В работе"
+        elif ticket.get('status') == 'выполнена':
+            status_emoji = "✅"
+            status_text = "Выполнена"
+        
         message += f"{i}. 🚨 #{ticket['ticket_number']}\n"
         message += f"   📍 {ticket['address'][:30]}...\n"
-        message += f"   ⚠️ {ticket['priority']}\n\n"
+        message += f"   ⚠️ {ticket['priority']} | {status_emoji} {status_text}\n\n"
         
         # Кнопка для выбора заявки
         keyboard.append([InlineKeyboardButton(f"Выбрать #{ticket['ticket_number']}", callback_data=f"select_{ticket['id']}")])

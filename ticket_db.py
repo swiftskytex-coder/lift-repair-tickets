@@ -154,6 +154,21 @@ class TicketDatabase:
                 )
             ''')
             
+            # Таблица отправки заявок механикам
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS ticket_mechanics (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ticket_id INTEGER NOT NULL,
+                    mechanic_id INTEGER NOT NULL,
+                    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    status TEXT DEFAULT 'sent',  -- sent, accepted, rejected
+                    responded_at TIMESTAMP,
+                    FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE,
+                    FOREIGN KEY (mechanic_id) REFERENCES mechanics(id) ON DELETE CASCADE,
+                    UNIQUE(ticket_id, mechanic_id)
+                )
+            ''')
+            
             conn.commit()
     
     def generate_ticket_number(self):
@@ -329,7 +344,11 @@ class TicketDatabase:
             return None
         
         # Обновляем историю
-        history = json.loads(ticket.get('history', '[]'))
+        history_data = ticket.get('history', '[]')
+        if isinstance(history_data, str):
+            history = json.loads(history_data)
+        else:
+            history = history_data if history_data else []
         history.append({
             'timestamp': datetime.now().isoformat(),
             'action': 'Обновление заявки',
@@ -369,6 +388,51 @@ class TicketDatabase:
             cursor.execute('''
                 SELECT * FROM comments WHERE ticket_id = ?
                 ORDER BY created_at ASC
+            ''', (ticket_id,))
+            rows = cursor.fetchall()
+            return [self._row_to_dict(row) for row in rows]
+    
+    def send_ticket_to_mechanic(self, ticket_id, mechanic_id):
+        """Отправка заявки механику"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT OR REPLACE INTO ticket_mechanics (ticket_id, mechanic_id, sent_at, status)
+                VALUES (?, ?, CURRENT_TIMESTAMP, 'sent')
+            ''', (ticket_id, mechanic_id))
+            conn.commit()
+    
+    def accept_ticket(self, ticket_id, mechanic_id):
+        """Механик принял заявку"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE ticket_mechanics 
+                SET status = 'accepted', responded_at = CURRENT_TIMESTAMP
+                WHERE ticket_id = ? AND mechanic_id = ?
+            ''', (ticket_id, mechanic_id))
+            conn.commit()
+    
+    def reject_ticket(self, ticket_id, mechanic_id):
+        """Механик отказался от заявки"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE ticket_mechanics 
+                SET status = 'rejected', responded_at = CURRENT_TIMESTAMP
+                WHERE ticket_id = ? AND mechanic_id = ?
+            ''', (ticket_id, mechanic_id))
+            conn.commit()
+    
+    def get_ticket_mechanics(self, ticket_id):
+        """Получение статуса механиков для заявки"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT tm.*, m.name as mechanic_name
+                FROM ticket_mechanics tm
+                JOIN mechanics m ON tm.mechanic_id = m.id
+                WHERE tm.ticket_id = ?
             ''', (ticket_id,))
             rows = cursor.fetchall()
             return [self._row_to_dict(row) for row in rows]
@@ -696,11 +760,13 @@ class TicketDatabase:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT t.* FROM tickets t
-                JOIN elevator_mechanics em ON t.elevator_id = em.elevator_id
-                WHERE em.mechanic_id = ? AND t.status IN ('новая', 'в работе')
+                SELECT DISTINCT t.* FROM tickets t
+                LEFT JOIN elevator_mechanics em ON t.elevator_id = em.elevator_id AND em.mechanic_id = ?
+                LEFT JOIN ticket_mechanics tm ON t.id = tm.ticket_id AND tm.mechanic_id = ?
+                WHERE (em.mechanic_id IS NOT NULL OR tm.mechanic_id IS NOT NULL) 
+                AND t.status IN ('новая', 'в работе')
                 ORDER BY t.created_at DESC
-            ''', (mechanic_id,))
+            ''', (mechanic_id, mechanic_id))
             rows = cursor.fetchall()
             return [self._row_to_dict(row) for row in rows]
 
@@ -731,9 +797,13 @@ class TicketDatabase:
             conn.commit()
 
     def get_next_oncall_mechanic(self):
-        """Получить следующего аварийного механика (по очереди)"""
+        """Получить следующего аварийного механика (из списка последних дежуривших, без двух дней подряд)"""
+        from datetime import datetime, timedelta
+        
         with self.get_connection() as conn:
             cursor = conn.cursor()
+            
+            # Получаем всех активных механиков
             cursor.execute('''
                 SELECT m.id, m.name, m.phone, m.telegram_username FROM mechanics m
                 WHERE m.status = 'active'
@@ -744,24 +814,35 @@ class TicketDatabase:
             if not all_mechanics:
                 return None
 
-            # Найти последнего, кто дежурил
+            # Получаем последние 4 дня дежурств
             cursor.execute('''
-                SELECT mechanic_id FROM oncall_mechanics
-                ORDER BY date DESC LIMIT 1
+                SELECT mechanic_id, date FROM oncall_mechanics
+                ORDER BY date DESC LIMIT 4
             ''')
-            last = cursor.fetchone()
+            recent = cursor.fetchall()
 
-            if not last:
-                return all_mechanics[0]  # Первый, если ещё никто не дежурил
-
-            last_id = last[0]
-            # Найти следующего в списке (циклически)
-            ids = [m['id'] for m in all_mechanics]
-            try:
-                idx = (ids.index(last_id) + 1) % len(ids)
-                return all_mechanics[idx]
-            except ValueError:
+            # Если нет истории, берём первого
+            if not recent:
                 return all_mechanics[0]
+            
+            # Список ID кто дежурил в последние дни (без повторов)
+            recent_ids = []
+            for r in recent:
+                if r[0] not in recent_ids:
+                    recent_ids.append(r[0])
+            
+            # Если кто-то дежурил вчера/сегодня, пропускаем его
+            yesterday_id = recent[0][0] if len(recent) > 0 else None
+            
+            # Ищем следующего после вчерашнего
+            for i, rid in enumerate(recent_ids):
+                if rid != yesterday_id:
+                    for mech in all_mechanics:
+                        if mech['id'] == rid:
+                            return mech
+            
+            # Если не нашли, берём первого из списка (кто не дежурил вчера)
+            return all_mechanics[0]
 
 
 # Синглтон для доступа к БД
