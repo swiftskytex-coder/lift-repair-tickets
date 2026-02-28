@@ -228,7 +228,30 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             del user_data[chat_id]
 
     elif data.startswith("back_to_tickets"):
-        await my_tickets(update, context)
+        await my_tickets_menu(update, context)
+    
+    # Новые обработчики для меню заявок
+    elif data == "tickets_new":
+        await show_tickets_by_status(update, context, 'new')
+    
+    elif data == "tickets_inwork":
+        await show_tickets_by_status(update, context, 'inwork')
+    
+    elif data == "tickets_done":
+        await show_tickets_by_status(update, context, 'done')
+    
+    elif data == "tickets_all":
+        await show_tickets_by_status(update, context, 'all')
+    
+    elif data == "back_tickets_menu":
+        await my_tickets_menu(update, context)
+    
+    elif data.startswith("ticket_"):
+        await show_ticket_details(update, context)
+    
+    elif data.startswith("back_tickets_"):
+        status = data.replace("back_tickets_", "")
+        await show_tickets_by_status(update, context, status)
     
     elif data.startswith("photo_"):
         ticket_id = int(data.split("_")[1])
@@ -249,6 +272,39 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             if chat_id in user_data:
                 del user_data[chat_id]
+    
+    # Быстрые ответы
+    elif data.startswith("quick_"):
+        parts = data.split("_")
+        action = parts[1]
+        ticket_id = int(parts[2])
+        
+        mechanic = db.get_mechanic_by_telegram(chat_id)
+        name = mechanic['name'] if mechanic else "Механик"
+        
+        ticket = db.get_ticket(ticket_id)
+        if not ticket:
+            await query.edit_message_text("❌ Заявка не найдена")
+            return
+        
+        if action == "onway":
+            db.add_comment(ticket_id, 'system', f"🚗 {name} в пути")
+            await query.edit_message_text(
+                f"✅ Отправлено оператору: 'В пути'\n\n"
+                f"Заявка #{ticket['ticket_number']}"
+            )
+        elif action == "parts":
+            db.add_comment(ticket_id, 'system', f"🔧 {name} - нужны запчасти")
+            await query.edit_message_text(
+                f"✅ Отправлено оператору: 'Нужны запчасти'\n\n"
+                f"Заявка #{ticket['ticket_number']}"
+            )
+        elif action == "ready":
+            db.update_ticket_status(ticket_id, 'выполнена', 'telegram_bot')
+            await query.edit_message_text(
+                f"✅ Заявка #{ticket['ticket_number']} завершена!\n\n"
+                "Спасибо за работу! 💪"
+            )
 
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -353,29 +409,61 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(help_text, reply_markup=get_main_keyboard())
 
 
-async def my_tickets(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показать текущие заявки механика с кнопками выбора"""
+async def my_tickets_menu(update, context, filter_type='active'):
+    """Показать меню выбора заявок"""
     chat_id = update.effective_chat.id
     
-    # Определяем объект для отправки ответа (callback или обычное сообщение)
-    if update.callback_query:
-        reply_func = update.callback_query.message.reply_text
+    # Проверяем что это callback query (кнопка нажата)
+    if hasattr(update, 'callback_query') and update.callback_query:
+        reply_func = update.callback_query.message.edit_text
+        query = update.callback_query
+        await query.answer()
     else:
         reply_func = update.message.reply_text
+    
+    keyboard = [
+        [InlineKeyboardButton("⏳ Новые", callback_data="tickets_new"),
+         InlineKeyboardButton("🔧 В работе", callback_data="tickets_inwork")],
+        [InlineKeyboardButton("✅ Завершённые", callback_data="tickets_done"),
+         InlineKeyboardButton("📋 Все", callback_data="tickets_all")]
+    ]
+    
+    await reply_func("Выберите тип заявок:", reply_markup=InlineKeyboardMarkup(keyboard))
 
+
+async def show_tickets_by_status(update, context, status_filter):
+    """Показать заявки по статусу"""
+    query = update.callback_query
+    await query.answer()
+    
+    chat_id = update.effective_chat.id
     mechanic = db.get_mechanic_by_telegram(chat_id)
     
     if not mechanic:
-        await reply_func("❌ Вы не зарегистрированы. Отправьте /start")
+        await query.edit_message_text("❌ Вы не зарегистрированы. Отправьте /start")
         return
     
-    tickets = db.get_mechanic_active_tickets(mechanic['id'])
+    # Получаем заявки по статусу
+    if status_filter == 'new':
+        tickets = db.get_mechanic_tickets_by_status(mechanic['id'], 'новая')
+        title = "⏳ Новые заявки"
+    elif status_filter == 'inwork':
+        tickets = db.get_mechanic_tickets_by_status(mechanic['id'], 'в работе')
+        title = "🔧 Заявки в работе"
+    elif status_filter == 'done':
+        tickets = db.get_mechanic_tickets_by_status(mechanic['id'], 'выполнена')
+        title = "✅ Завершённые заявки"
+    else:
+        tickets = db.get_all_mechanic_tickets(mechanic['id'])
+        title = "📋 Все заявки"
     
     if not tickets:
-        await reply_func("ℹ️ У вас нет активных заявок", reply_markup=get_main_keyboard())
+        await query.edit_message_text(f"{title}\n\nЗаявок нет", reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔙 Назад", callback_data="back_tickets_menu")]
+        ]))
         return
     
-    message = "📋 Ваши активные заявки:\n\n"
+    message = f"{title}\n\n"
     keyboard = []
     
     for i, ticket in enumerate(tickets, 1):
@@ -388,16 +476,66 @@ async def my_tickets(update: Update, context: ContextTypes.DEFAULT_TYPE):
             status_emoji = "✅"
             status_text = "Выполнена"
         
+        address = ticket['address'].replace('подъезд', 'пд').replace('Подъезд', 'Пд')
         message += f"{i}. 🚨 #{ticket['ticket_number']}\n"
-        message += f"   📍 {ticket['address'][:30]}...\n"
+        message += f"   📍 {address[:40]}...\n"
         message += f"   ⚠️ {ticket['priority']} | {status_emoji} {status_text}\n\n"
         
-        # Кнопка для выбора заявки
-        keyboard.append([InlineKeyboardButton(f"Выбрать #{ticket['ticket_number']}", callback_data=f"select_{ticket['id']}")])
+        # Кнопка деталей заявки
+        keyboard.append([InlineKeyboardButton(f"#{ticket['ticket_number']} →", callback_data=f"ticket_{ticket['id']}")])
     
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back_tickets_menu")])
     
-    await reply_func(message, reply_markup=reply_markup)
+    await query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(keyboard))
+
+
+async def show_ticket_details(update, context):
+    """Показать детали заявки"""
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    ticket_id = int(data.split("_")[1])
+    
+    ticket = db.get_ticket(ticket_id)
+    if not ticket:
+        await query.edit_message_text("❌ Заявка не найдена")
+        return
+    
+    # Формируем детали
+    address = ticket['address'].replace('подъезд', 'пд').replace('Подъезд', 'Пд')
+    message = f"🚨 Заявка #{ticket['ticket_number']}\n\n"
+    message += f"📍 Адрес: {address}\n"
+    message += f"⚠️ Приоритет: {ticket['priority']}\n"
+    message += f"📊 Статус: {ticket['status']}\n"
+    
+    if ticket.get('client_phone'):
+        message += f"📞 Телефон: {ticket['client_phone']}\n"
+    
+    if ticket.get('problem_description'):
+        message += f"\n📝 Проблема:\n{ticket['problem_description']}\n"
+    
+    # Кнопки действий
+    keyboard = []
+    
+    if ticket['status'] == 'новая':
+        keyboard.append([InlineKeyboardButton("✅ Принять", callback_data=f"accept_{ticket_id}")])
+        keyboard.append([InlineKeyboardButton("❌ Отказаться", callback_data=f"reject_{ticket_id}")])
+    elif ticket['status'] == 'в работе':
+        keyboard.append([
+            InlineKeyboardButton("🚗 В пути", callback_data=f"quick_onway_{ticket_id}"),
+            InlineKeyboardButton("🔧 Нужны запчасти", callback_data=f"quick_parts_{ticket_id}")
+        ])
+        keyboard.append([InlineKeyboardButton("✅ Готов", callback_data=f"quick_ready_{ticket_id}")])
+    
+    keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data=f"back_tickets_{ticket['status']}")])
+    
+    await query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(keyboard))
+
+
+# Старый обработчик для обратной совместимости
+async def my_tickets(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await my_tickets_menu(update, context)
 
 
 async def handle_text_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):

@@ -755,6 +755,35 @@ class TicketDatabase:
             rows = cursor.fetchall()
             return [self._row_to_dict(row) for row in rows]
 
+    def get_mechanic_tickets_by_status(self, mechanic_id, status):
+        """Получение заявок механика по статусу"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT DISTINCT t.* FROM tickets t
+                LEFT JOIN elevator_mechanics em ON t.elevator_id = em.elevator_id AND em.mechanic_id = ?
+                LEFT JOIN ticket_mechanics tm ON t.id = tm.ticket_id AND tm.mechanic_id = ?
+                WHERE (em.mechanic_id IS NOT NULL OR tm.mechanic_id IS NOT NULL) 
+                AND t.status = ?
+                ORDER BY t.created_at DESC
+            ''', (mechanic_id, mechanic_id, status))
+            rows = cursor.fetchall()
+            return [self._row_to_dict(row) for row in rows]
+    
+    def get_all_mechanic_tickets(self, mechanic_id):
+        """Получение всех заявок механика"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT DISTINCT t.* FROM tickets t
+                LEFT JOIN elevator_mechanics em ON t.elevator_id = em.elevator_id AND em.mechanic_id = ?
+                LEFT JOIN ticket_mechanics tm ON t.id = tm.ticket_id AND tm.mechanic_id = ?
+                WHERE em.mechanic_id IS NOT NULL OR tm.mechanic_id IS NOT NULL
+                ORDER BY t.created_at DESC
+            ''', (mechanic_id, mechanic_id))
+            rows = cursor.fetchall()
+            return [self._row_to_dict(row) for row in rows]
+
     def get_mechanic_active_tickets(self, mechanic_id):
         """Получение активных заявок механика"""
         with self.get_connection() as conn:

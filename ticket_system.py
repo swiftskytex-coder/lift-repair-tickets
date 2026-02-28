@@ -87,6 +87,14 @@ def index():
     for ticket in recent_tickets:
         ticket['is_oncall_today'] = False
         
+        # Получаем последний комментарий
+        try:
+            comments = db.get_comments(ticket['id'])
+            if comments:
+                ticket['last_comment'] = comments[-1].get('text', '')[:50]
+        except:
+            pass
+        
         # Получаем список механиков для этого лифта
         elevator_mechanics = []
         if ticket.get('elevator_id'):
@@ -254,10 +262,18 @@ def index():
         print(f"Ticket #{t['ticket_number']}: status={t['status']}, assigned_to=[{t.get('assigned_to')}], mechanic=[{t.get('mechanic_name')}]")
     print("============================")
     
+    # Организуем заявки по статусу для канбана
+    tickets_by_status = {'новая': [], 'в работе': [], 'выполнена': []}
+    for t in recent_tickets:
+        status = t.get('status', 'новая')
+        if status in tickets_by_status:
+            tickets_by_status[status].append(t)
+    
     return render_template('operator_dashboard.html', 
                          stats=stats,
                          shift_stats=shift_stats,
                          tickets=recent_tickets,
+                         tickets_by_status=tickets_by_status,
                          now=datetime.now(),
                          oncall_today=oncall_today)
 
@@ -542,6 +558,15 @@ def api_update_status(ticket_id):
     
     if not ticket:
         return jsonify({'success': False, 'error': 'Ticket not found'}), 404
+    
+    # Отправляем уведомление механикам если заявка завершена
+    if new_status == 'выполнена' and ticket.get('assigned_to'):
+        try:
+            from notification_service import notify_ticket_completed
+            import asyncio
+            asyncio.create_task(notify_ticket_completed(ticket_id))
+        except:
+            pass
     
     return jsonify({
         'success': True,

@@ -86,6 +86,37 @@ async def notify_mechanics_about_ticket(ticket_id):
 #     return jsonify({...})
 
 
+async def notify_ticket_completed(ticket_id):
+    """Уведомление о завершении заявки"""
+    ticket = db.get_ticket(ticket_id)
+    if not ticket:
+        return False
+    
+    # Получаем механика которому была назначена заявка
+    if not ticket.get('assigned_to'):
+        return False
+    
+    try:
+        mechanic = db.get_mechanic(int(ticket['assigned_to']))
+    except:
+        return False
+    
+    if not mechanic or not mechanic.get('telegram_chat_id'):
+        return False
+    
+    try:
+        bot = Bot(token=BOT_TOKEN)
+        await bot.send_message(
+            chat_id=mechanic['telegram_chat_id'],
+            text=f"✅ Заявка #{ticket['ticket_number']} ЗАВЕРШЕНА оператором!\n\n"
+                 f"Спасибо за работу! 💪"
+        )
+        return True
+    except Exception as e:
+        print(f"❌ Ошибка уведомления о завершении: {e}")
+        return False
+
+
 if __name__ == "__main__":
     # Тест отправки
     if BOT_TOKEN == "ВАШ_ТОКЕН_БОТА":

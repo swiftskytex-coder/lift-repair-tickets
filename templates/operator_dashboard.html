@@ -1,15 +1,15 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
     <title>🛠️ Система заявок на ремонт лифтов</title>
-    <!-- TEMPLATE VERSION: ONCALL_BADGE_V2 -->
+    <!-- TEMPLATE VERSION: DARK_KANBAN -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <link rel="icon" href="data:,">
     <style>
         :root {
-            --primary-color: #2563eb;
+            --primary-color: #3b82f6;
             --success-color: #10b981;
             --warning-color: #f59e0b;
             --danger-color: #ef4444;
@@ -17,114 +17,83 @@
         }
         
         body {
-            background-color: #f3f4f6;
+            background-color: #0f1419;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
         
         .navbar {
-            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%) !important;
+        }
+        
+        .card {
+            background-color: #1c2833;
+            border: 1px solid #2d3f50;
         }
         
         .stat-card {
-            background: white;
+            background: #1c2833;
+            border: 1px solid #2d3f50;
             border-radius: 12px;
             padding: 20px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
             transition: transform 0.2s;
         }
         
         .stat-card:hover {
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
         }
-        
-        .stat-icon {
-            width: 48px;
-            height: 48px;
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-        }
-        
-        .bg-gradient-primary { background: linear-gradient(135deg, #3b82f6, #1d4ed8); }
-        .bg-gradient-success { background: linear-gradient(135deg, #10b981, #059669); }
-        .bg-gradient-warning { background: linear-gradient(135deg, #f59e0b, #d97706); }
-        .bg-gradient-danger { background: linear-gradient(135deg, #ef4444, #dc2626); }
-        .bg-gradient-info { background: linear-gradient(135deg, #0ea5e9, #0284c7); }
         
         .ticket-card {
-            background: white;
-            border-radius: 12px;
-            padding: 16px;
-            margin-bottom: 12px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            border-left: 4px solid transparent;
-            transition: all 0.2s;
+            background: #1c2833;
+            border: 1px solid #2d3f50;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 10px;
             cursor: pointer;
+            transition: all 0.2s;
         }
         
         .ticket-card:hover {
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            transform: translateX(4px);
+            background: #243447;
+            border-color: #3b82f6;
         }
         
-        .ticket-card.priority-срочный { border-left-color: #dc2626; }
-        .ticket-card.priority-высокий { border-left-color: #f59e0b; }
-        .ticket-card.priority-обычный { border-left-color: #3b82f6; }
-        .ticket-card.priority-низкий { border-left-color: #6b7280; }
-        
-        .status-badge {
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-        
-        .status-новая { background: #dbeafe; color: #1e40af; }
-        .status-в-работе { background: #fef3c7; color: #92400e; }
-        .status-выполнена { background: #d1fae5; color: #065f46; }
-        .status-отменена { background: #fee2e2; color: #991b1b; }
-        
-        .priority-badge {
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: 600;
-        }
-        
-        .priority-срочный { background: #fee2e2; color: #991b1b; }
-        .priority-высокий { background: #fef3c7; color: #92400e; }
-        .priority-обычный { background: #dbeafe; color: #1e40af; }
-        .priority-низкий { background: #f3f4f6; color: #4b5563; }
-        
-        .quick-action-btn {
-            padding: 12px 24px;
+        .kanban-column {
+            min-height: 500px;
+            background: #0d1117;
             border-radius: 8px;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            transition: all 0.2s;
+            padding: 10px;
         }
         
-        .quick-action-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        .kanban-header {
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            font-weight: bold;
+            text-align: center;
         }
         
-        .section-title {
-            font-size: 18px;
-            font-weight: 700;
-            color: #1f2937;
-            margin-bottom: 16px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
+        .kanban-new { background: #dc2626; }
+        .kanban-work { background: #f59e0b; color: #000; }
+        .kanban-done { background: #10b981; }
+        
+        .text-muted { color: #8b949e !important; }
+        
+        .btn-outline-primary { border-color: #3b82f6; color: #3b82f6; }
+        .btn-outline-primary:hover { background: #3b82f6; }
+        
+        input.form-control, select.form-control {
+            background-color: #0d1117;
+            border-color: #2d3f50;
+            color: #fff;
         }
+        
+        .dropdown-menu {
+            background-color: #1c2833;
+            border: 1px solid #2d3f50;
+        }
+        
+        .dropdown-item { color: #fff; }
+        .dropdown-item:hover { background-color: #243447; }
     </style>
 </head>
 <body>
@@ -257,159 +226,73 @@
                 
                 <!-- Аварийный механик сегодня -->
                 {% if oncall_today %}
-                <div class="mt-4 p-3 bg-light rounded-3">
-                    <div class="d-flex align-items-center mb-2">
+                <div class="mt-3 p-2 rounded-3" style="background: #243447;">
+                    <div class="d-flex align-items-center mb-1">
                         <i class="bi bi-person-badge text-danger me-2"></i>
-                        <strong class="text-danger">Аварийный механик</strong>
+                        <strong class="text-danger">Аварийный</strong>
                     </div>
                     <div class="fw-bold">{{ oncall_today.name }}</div>
                     <div class="text-muted small">{{ oncall_today.phone }}</div>
                 </div>
                 {% endif %}
-
-                <!-- Распределение по приоритетам -->
-                <div class="mt-4">
-                    <div class="section-title">
-                        <i class="bi bi-bar-chart"></i>
-                        По приоритетам
-                    </div>
-                    <div class="bg-white rounded-3 p-3">
-                        {% for priority, count in stats.by_priority.items() %}
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <span class="priority-badge priority-{{ priority }}">{{ priority }}</span>
-                            <span class="fw-bold">{{ count }}</span>
-                        </div>
-                        {% endfor %}
-                    </div>
-                </div>
-
-                <!-- Распределение по источникам -->
-                <div class="mt-4">
-                    <div class="section-title">
-                        <i class="bi bi-globe"></i>
-                        По источникам
-                    </div>
-                    <div class="bg-white rounded-3 p-3">
-                        {% for source, count in stats.by_source.items() %}
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <span class="text-muted small">
-                                {% if source == 'phone' %}📞 Телефон
-                                {% elif source == 'mobile_app' %}📱 Мобильное приложение
-                                {% elif source == 'operator' %}👨‍💻 Оператор
-                                {% else %}{{ source }}
-                                {% endif %}
-                            </span>
-                            <span class="fw-bold">{{ count }}</span>
-                        </div>
-                        {% endfor %}
-                    </div>
-                </div>
             </div>
 
-            <!-- Последние заявки -->
+            <!-- Заявки -->
             <div class="col-lg-9">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <div class="section-title mb-0">
-                        <i class="bi bi-clock-history"></i>
-                        Последние заявки
-                    </div>
-                    <a href="/tickets" class="btn btn-sm btn-outline-primary">
-                        Все заявки <i class="bi bi-arrow-right"></i>
-                    </a>
+                <div class="section-title mb-2">
+                    <i class="bi bi-list-ul"></i>
+                    Заявки
+                    <span class="badge bg-secondary ms-2">{{ tickets|length }}</span>
                 </div>
-
-                <div class="btn-group mb-3" role="group">
+                
+                <div class="btn-group mb-2" role="group">
                     <input type="radio" class="btn-check" name="statusFilter" id="filterAll" checked autocomplete="off">
                     <label class="btn btn-sm btn-outline-primary" for="filterAll">Все</label>
                     
-                    <input type="radio" class="btn-check" name="statusFilter" id="filterSent" autocomplete="off">
-                    <label class="btn btn-sm btn-outline-secondary" for="filterSent">📤 Отправлено</label>
+                    <input type="radio" class="btn-check" name="statusFilter" id="filterNew" autocomplete="off">
+                    <label class="btn btn-sm btn-outline-danger" for="filterNew">⏳ Новые</label>
                     
-                    <input type="radio" class="btn-check" name="statusFilter" id="filterAccepted" autocomplete="off">
-                    <label class="btn btn-sm btn-outline-success" for="filterAccepted">✅ Принято</label>
+                    <input type="radio" class="btn-check" name="statusFilter" id="filterWork" autocomplete="off">
+                    <label class="btn btn-sm btn-outline-warning" for="filterWork">🔧 В работе</label>
                     
-                    <input type="radio" class="btn-check" name="statusFilter" id="filterRejected" autocomplete="off">
-                    <label class="btn btn-sm btn-outline-danger" for="filterRejected">❌ Отказано</label>
+                    <input type="radio" class="btn-check" name="statusFilter" id="filterDone" autocomplete="off">
+                    <label class="btn btn-sm btn-outline-success" for="filterDone">✅ Готовы</label>
                 </div>
 
-                {% if tickets %}
-                    {% for ticket in tickets %}
-                    <div class="ticket-card priority-{{ ticket.priority }}" 
-                         data-was-sent="{{ 'true' if ticket.was_sent else 'false' }}"
-                         data-was-accepted="{{ 'true' if ticket.was_accepted else 'false' }}"
-                         data-was-rejected="{{ 'true' if ticket.was_rejected else 'false' }}"
-                         onclick="window.location.href='/ticket/{{ ticket.id }}'">
-                        <div class="d-flex justify-content-between align-items-start mb-2">
-                            <div>
-                                <span class="fw-bold text-primary">#{{ ticket.ticket_number }}</span>
-                                <span class="priority-badge priority-{{ ticket.priority }} ms-2">{{ ticket.priority }}</span>
-                            </div>
-                             <div class="text-end">
-                                  {% if ticket.mechanics_list %}
-                                      <div class="small d-flex flex-column gap-1 align-items-end">
-                                          {% for mech in ticket.mechanics_list %}
-                                              <div class="d-flex align-items-center gap-1">
-                                                  <i class="bi bi-person-fill text-primary"></i>
-                                                  <span class="text-primary">{{ mech.name }}</span>
-                                                  {% if mech.status == 'Принял' %}
-                                                      <span class="badge bg-success" style="font-size: 9px;"><i class="bi bi-check-circle"></i> Принял</span>
-                                                  {% elif mech.status == 'Аварийный' %}
-                                                      <span class="badge bg-danger" style="font-size: 9px;"><i class="bi bi-exclamation-triangle"></i> Аварийный</span>
-                                                  {% else %}
-                                                      <span class="badge bg-info" style="font-size: 9px;"><i class="bi bi-person"></i> Линейный</span>
-                                                  {% endif %}
-                                                   {% if mech.tg_status == 'accepted' %}
-                                                       <span class="badge bg-success" style="font-size: 9px;"><i class="bi bi-check-circle"></i> Принято</span>
-                                                   {% elif mech.tg_status == 'rejected' %}
-                                                       <span class="badge bg-warning text-dark" style="font-size: 9px;"><i class="bi bi-x-circle"></i> Отказ</span>
-                                                   {% else %}
-                                                       <span class="badge bg-secondary" style="font-size: 9px;"><i class="bi bi-send"></i> Отправлено</span>
-                                                   {% endif %}
-                                              </div>
-                                          {% endfor %}
-                                      </div>
-                                  {% else %}
-                                      <div class="small mt-1 text-muted fst-italic">Не назначен</div>
-                                  {% endif %}
-                            </div>
-                        </div>
-                        
-                        <div class="mb-2">
+                {% for ticket in tickets %}
+                <div class="ticket-card" 
+                     data-status="{{ ticket.status }}"
+                     onclick="window.location.href='/ticket/{{ ticket.id }}'">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="d-flex align-items-center gap-2">
                             {% if ticket.elevator_id %}
-                            <span class="badge bg-light text-dark me-1">{{ ticket.elevator_id }}</span>
+                            <span class="badge bg-light text-dark">{{ ticket.elevator_id }}</span>
                             {% endif %}
-                            <i class="bi bi-geo-alt"></i>
-                            <span class="small">{{ ticket.address }}</span>
+                            <span class="text-white">#{{ ticket.ticket_number }}</span>
+                            <span class="priority-badge priority-{{ ticket.priority }}">{{ ticket.priority }}</span>
+                            {% if ticket.status == 'новая' %}
+                            <span class="badge bg-danger">⏳</span>
+                            {% elif ticket.status == 'в работе' %}
+                            <span class="badge bg-warning text-dark">🔧</span>
+                            {% elif ticket.status == 'выполнена' %}
+                            <span class="badge bg-success">✅</span>
+                            {% endif %}
                         </div>
-                        
-                        <div class="text-muted small">
-                            <i class="bi bi-chat-left-text"></i>
-                            {{ ticket.problem_description[:100] }}{% if ticket.problem_description|length > 100 %}...{% endif %}
-                        </div>
-                        
-                        <div class="mt-2 d-flex justify-content-between align-items-center">
-                            <span class="text-muted small">
-                                <i class="bi bi-calendar"></i>
-                                {{ ticket.created_at[:16].replace('T', ' ') }}
-                            </span>
-                            <span class="text-muted small">
-                                {% if ticket.source == 'phone' %}📞
-                                {% elif ticket.source == 'mobile_app' %}📱
-                                {% elif ticket.source == 'operator' %}👨‍💻
-                                {% endif %}
-                            </span>
-                        </div>
+                        <small class="text-muted">{{ ticket.created_at[:16].replace('T', ' ') }}</small>
                     </div>
-                    {% endfor %}
-                {% else %}
-                    <div class="text-center py-5">
-                        <i class="bi bi-inbox text-muted" style="font-size: 48px;"></i>
-                        <p class="text-muted mt-3">Нет заявок</p>
-                        <a href="/new-ticket" class="btn btn-primary">
-                            <i class="bi bi-plus-lg"></i> Создать первую заявку
-                        </a>
+                    <div class="small mt-1 text-white">{{ ticket.address }}</div>
+                    {% if ticket.mechanics_list %}
+                    <div class="mt-1">
+                        {% for mech in ticket.mechanics_list[:3] %}
+                            <span class="badge bg-secondary me-1" style="font-size: 10px;">{{ mech.name.split()[0] }}</span>
+                        {% endfor %}
                     </div>
-                {% endif %}
+                    {% endif %}
+                    {% if ticket.last_comment %}
+                    <div class="mt-1 small text-info">{{ ticket.last_comment[:40] }}</div>
+                    {% endif %}
+                </div>
+                {% endfor %}
             </div>
         </div>
     </div>
@@ -457,14 +340,12 @@
             radio.addEventListener('change', function() {
                 const filter = this.id.replace('filter', '').toLowerCase();
                 document.querySelectorAll('.ticket-card').forEach(card => {
-                    const wasSent = card.dataset.wasSent === 'true';
-                    const wasAccepted = card.dataset.wasAccepted === 'true';
-                    const wasRejected = card.dataset.wasRejected === 'true';
+                    const status = card.dataset.status;
                     
                     let show = true;
-                    if (filter === 'sent') show = wasSent && !wasAccepted;
-                    else if (filter === 'accepted') show = wasAccepted;
-                    else if (filter === 'rejected') show = wasRejected;
+                    if (filter === 'new') show = status === 'новая';
+                    else if (filter === 'work') show = status === 'в работе';
+                    else if (filter === 'done') show = status === 'выполнена';
                     
                     card.style.display = show ? '' : 'none';
                 });
