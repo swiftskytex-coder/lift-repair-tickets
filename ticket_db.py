@@ -834,7 +834,7 @@ class TicketDatabase:
             
             # Получаем всех активных механиков
             cursor.execute('''
-                SELECT m.id, m.name, m.phone, m.telegram_username FROM mechanics m
+                SELECT m.id, m.name, m.phone, m.telegram_username, m.telegram_chat_id FROM mechanics m
                 WHERE m.status = 'active'
                 ORDER BY m.id
             ''')

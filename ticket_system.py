@@ -9,15 +9,45 @@ import zipfile
 import io
 import sqlite3
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from flask import Flask, request, jsonify, render_template, send_from_directory, send_file
 import shutil
 from pathlib import Path
 from ticket_db import db
 
+# Самара UTC+4
+SAMARA_TZ = ZoneInfo('Europe/Samara')
+
+def now_samara():
+    """Текущее время в Самаре"""
+    return datetime.now(SAMARA_TZ)
+
+def format_samara(dt):
+    """Форматирование даты для Самары"""
+    if dt:
+        if isinstance(dt, str):
+            dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
+        return dt.astimezone(SAMARA_TZ).strftime('%d.%m %H:%M')
+    return ''
+
 app = Flask(__name__, template_folder='templates', static_folder='static')
-app.config['JSON_AS_ASCII'] = False
+app.config['JSON_AS_cii'] = False
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 app.jinja_env.auto_reload = True
+
+@app.template_filter('samara_time')
+def samara_time_filter(dt):
+    """Фильтр для отображения времени в Самаре"""
+    if not dt:
+        return ''
+    try:
+        if isinstance(dt, str):
+            dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
+        # Добавляем 4 часа для Самары (данные в UTC)
+        dt = dt + timedelta(hours=4)
+        return dt.strftime('%H:%M %d.%m')
+    except:
+        return str(dt)[:16]
 
 from werkzeug.exceptions import HTTPException
 
@@ -92,6 +122,38 @@ def index():
             comments = db.get_comments(ticket['id'])
             if comments:
                 ticket['last_comment'] = comments[-1].get('text', '')[:50]
+        except:
+            pass
+        
+        # Получаем полную историю (статусы + комментарии)
+        try:
+            import json
+            history = ticket.get('history', '[]')
+            if isinstance(history, str):
+                history = json.loads(history)
+            
+            log_entries = []
+            seen = set()
+            for h in reversed(history[-10:]):
+                action = h.get('action', '')
+                if action and action not in seen:
+                    # Сокращаем сообщения
+                    action = action.replace('Механик ', '').replace('Панаев Александр', 'Панаев')
+                    log_entries.append(action[:50])
+                    seen.add(action)
+            
+            # Добавляем комментарии (без дубликатов)
+            try:
+                comments = db.get_comments(ticket['id'])
+                for c in reversed(comments[-5:]):
+                    text = c.get('text', '')[:50]
+                    if text and text not in seen:
+                        log_entries.append(f"💬 {text}")
+                        seen.add(text)
+            except:
+                pass
+            
+            ticket['ticket_log'] = log_entries[:5]
         except:
             pass
         

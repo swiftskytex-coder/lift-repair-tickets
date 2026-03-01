@@ -263,34 +263,49 @@
                 <div class="ticket-card" 
                      data-status="{{ ticket.status }}"
                      onclick="window.location.href='/ticket/{{ ticket.id }}'">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div class="d-flex align-items-center gap-2">
-                            {% if ticket.elevator_id %}
-                            <span class="badge bg-light text-dark">{{ ticket.elevator_id }}</span>
-                            {% endif %}
-                            <span class="text-white">#{{ ticket.ticket_number }}</span>
-                            <span class="priority-badge priority-{{ ticket.priority }}">{{ ticket.priority }}</span>
-                            {% if ticket.status == 'новая' %}
-                            <span class="badge bg-danger">⏳</span>
-                            {% elif ticket.status == 'в работе' %}
-                            <span class="badge bg-warning text-dark">🔧</span>
-                            {% elif ticket.status == 'выполнена' %}
-                            <span class="badge bg-success">✅</span>
+                     <div class="row g-2">
+                        <!-- Левая колонка - заявка -->
+                        <div class="col-6">
+                            <div class="d-flex align-items-center gap-2">
+                                {% if ticket.elevator_id %}
+                                <span class="badge bg-light text-dark">{{ ticket.elevator_id }}</span>
+                                {% endif %}
+                                <span class="text-white">{{ ticket.created_at|samara_time }}</span>
+                                <span class="priority-badge priority-{{ ticket.priority }}">{{ ticket.priority }}</span>
+                                {% if ticket.status == 'новая' %}
+                                <span class="badge bg-danger">⏳</span>
+                                {% elif ticket.status == 'в работе' %}
+                                <span class="badge bg-warning text-dark">🔧</span>
+                                {% elif ticket.status == 'выполнена' %}
+                                <span class="badge bg-success">✅</span>
+                                {% endif %}
+                            </div>
+                            <div class="small mt-1 text-white">{{ ticket.address }}</div>
+                            {% if ticket.mechanics_list %}
+                            <div class="mt-1">
+                                {% for mech in ticket.mechanics_list[:2] %}
+                                <span class="badge bg-secondary me-1" 
+                                      style="font-size: 10px; {% if mech.status == 'Аварийный' %}border: 1px solid #ef4444;{% endif %}"
+                                      data-bs-toggle="tooltip" 
+                                      data-bs-title="{% if mech.status == 'Аварийный' %}Аварийный{% else %}Линейный{% endif %} | {% if mech.tg_status == 'accepted' %}Принял{% elif mech.tg_status == 'rejected' %}Отказ{% else %}Отправлено{% endif %}">
+                                    {{ mech.name.split()[0] }}
+                                    {% if mech.tg_status == 'accepted' %}✓{% elif mech.tg_status == 'rejected' %}✗{% else %}↗{% endif %}
+                                </span>
+                                {% endfor %}
+                            </div>
                             {% endif %}
                         </div>
-                        <small class="text-muted">{{ ticket.created_at[:16].replace('T', ' ') }}</small>
+                        <!-- Правая колонка - лог заявки -->
+                        <div class="col-6 text-end" style="max-height: 70px; overflow-y: auto;">
+                            {% if ticket.ticket_log %}
+                            <div class="small text-muted" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                {% for log in ticket.ticket_log %}
+                                <div>{{ log[:50] }}</div>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
                     </div>
-                    <div class="small mt-1 text-white">{{ ticket.address }}</div>
-                    {% if ticket.mechanics_list %}
-                    <div class="mt-1">
-                        {% for mech in ticket.mechanics_list[:3] %}
-                            <span class="badge bg-secondary me-1" style="font-size: 10px;">{{ mech.name.split()[0] }}</span>
-                        {% endfor %}
-                    </div>
-                    {% endif %}
-                    {% if ticket.last_comment %}
-                    <div class="mt-1 small text-info">{{ ticket.last_comment[:40] }}</div>
-                    {% endif %}
                 </div>
                 {% endfor %}
             </div>

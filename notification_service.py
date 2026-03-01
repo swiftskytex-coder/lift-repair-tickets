@@ -37,17 +37,27 @@ async def notify_mechanics_about_ticket(ticket_id):
 
     # 2. Добавляем АВАРИЙНОГО МЕХАНИКА, если это не плановое обслуживание
     # Приоритет 'низкий' означает плановое обслуживание
+    print(f"DEBUG: priority = {ticket.get('priority')}")
     if ticket.get('priority') != 'низкий':
         try:
             today = datetime.now().strftime('%Y-%m-%d')
             oncall_mechanic = db.get_oncall_mechanic_for_date(today)
+            print(f"DEBUG: oncall for today = {oncall_mechanic}")
+            
+            # Если нет дежурного на сегодня - используем следующего по очереди
+            if not oncall_mechanic:
+                oncall_mechanic = db.get_next_oncall_mechanic()
+                print(f"DEBUG: fallback to next oncall = {oncall_mechanic}")
             
             if oncall_mechanic:
                 # Проверяем, нет ли его уже в списке (по ID)
                 assigned_ids = [m['id'] for m in mechanics]
+                print(f"DEBUG: linear ids = {assigned_ids}, oncall id = {oncall_mechanic['id']}")
                 if oncall_mechanic['id'] not in assigned_ids:
                     print(f"🚨 Добавляем аварийного механика: {oncall_mechanic['name']}")
                     mechanics.append(oncall_mechanic)
+                else:
+                    print(f"DEBUG: oncall already in list, skipping")
         except Exception as e:
             print(f"⚠️ Ошибка получения аварийного механика: {e}")
 
