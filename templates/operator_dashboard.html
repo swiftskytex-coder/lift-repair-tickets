@@ -267,8 +267,8 @@
                         <!-- Левая колонка - заявка -->
                         <div class="col-6">
                             <div class="d-flex align-items-center gap-2">
-                                {% if ticket.elevator_id %}
-                                <span class="badge bg-light text-dark">{{ ticket.elevator_id }}</span>
+                                {% if ticket.entrance %}
+                                <span class="badge bg-light text-dark">{{ ticket.entrance }}</span>
                                 {% endif %}
                                 <span class="text-white">{{ ticket.created_at|samara_time }}</span>
                                 <span class="priority-badge priority-{{ ticket.priority }}">{{ ticket.priority }}</span>
@@ -283,7 +283,7 @@
                             <div class="small mt-1 text-white">{{ ticket.address }}</div>
                             {% if ticket.mechanics_list %}
                             <div class="mt-1">
-                                {% for mech in ticket.mechanics_list[:2] %}
+                                {% for mech in ticket.mechanics_list %}
                                 <span class="badge bg-secondary me-1" 
                                       style="font-size: 10px; {% if mech.status == 'Аварийный' %}border: 1px solid #ef4444;{% endif %}"
                                       data-bs-toggle="tooltip" 

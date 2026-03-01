@@ -95,8 +95,8 @@
                             <th>ФИО</th>
                             <th>Телефон</th>
                             <th>Telegram</th>
-                            <th>Статус</th>
-                            <th>Действия</th>
+                            <th>Подключён</th>
+                            <th></th>
                         </tr>
                     </thead>
                     <tbody id="mechanicsTable">
@@ -119,25 +119,17 @@
                                 {% endif %}
                             </td>
                             <td>
-                                {% if mechanic.status == 'active' %}
-                                    <span class="status-badge status-active">Активен</span>
-                                {% elif mechanic.status == 'inactive' %}
-                                    <span class="status-badge status-inactive">Неактивен</span>
+                                {% if mechanic.telegram_chat_id %}
+                                    <span class="badge bg-success"><i class="bi bi-check-circle"></i> Подключён</span>
                                 {% else %}
-                                    <span class="status-badge status-on_leave">{{ mechanic.status }}</span>
+                                    <span class="badge bg-secondary">Не подключён</span>
                                 {% endif %}
                             </td>
                             <td>
-                                <div class="action-buttons">
-                                    <button class="btn btn-sm btn-outline-primary action-btn" 
-                                            onclick="openEditModal({{ mechanic.id }}, '{{ mechanic.name }}', '{{ mechanic.phone }}', '{{ mechanic.telegram_username or '' }}', '{{ mechanic.telegram_chat_id or '' }}', '{{ mechanic.status }}')">
-                                        <i class="bi bi-pencil"></i>
-                                    </button>
-                                    <button class="btn btn-sm btn-outline-danger action-btn" 
-                                            onclick="deleteMechanic({{ mechanic.id }})">
-                                        <i class="bi bi-trash"></i>
-                                    </button>
-                                </div>
+                                <button class="btn btn-sm btn-outline-primary" 
+                                        onclick="openEditModal({{ mechanic.id }}, '{{ mechanic.name }}', '{{ mechanic.phone }}', '{{ mechanic.telegram_username or '' }}', '{{ mechanic.telegram_chat_id or '' }}', '{{ mechanic.status }}')">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
                             </td>
                         </tr>
                         {% endfor %}

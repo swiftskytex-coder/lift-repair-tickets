@@ -45,7 +45,8 @@ def samara_time_filter(dt):
             dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
         # Добавляем 4 часа для Самары (данные в UTC)
         dt = dt + timedelta(hours=4)
-        return dt.strftime('%H:%M %d.%m')
+        months = ['', 'янв', 'фев', 'март', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек']
+        return f"{dt.day} {months[dt.month]} {dt.hour:02d}:{dt.minute:02d}"
     except:
         return str(dt)[:16]
 
@@ -105,6 +106,13 @@ def index():
     
     # Исключаем выполненные и отмененные заявки из списка последних
     recent_tickets = db.search_tickets(limit=10, exclude_status=['выполнена', 'отменена'])
+    
+    # Добавляем подъезд к каждой заявке
+    for ticket in recent_tickets:
+        if ticket.get('elevator_id'):
+            elevator = db.get_elevator(ticket['elevator_id'])
+            if elevator and elevator.get('entrance'):
+                ticket['entrance'] = f"п.{elevator['entrance']}"
     
     # Получить текущего аварийного механика ДО обогащения заявок
     today = datetime.now().strftime('%Y-%m-%d')
@@ -185,19 +193,30 @@ def index():
                 mech_info['status'] = 'Аварийный'
             else:
                 mech_info['status'] = 'Линейный'
-                
-            mechanics_list.append(mech_info)
+            
+            # Проверяем на дубликат перед добавлением
+            if not any(m['id'] == mech['id'] for m in mechanics_list):
+                mechanics_list.append(mech_info)
         
-        # Также добавляем аварийного механика, если он не в списке линейных
+        # Добавляем аварийного механика (сегодня или следующий по очереди)
+        oncall_to_add = None
         if oncall_today and oncall_today_id:
-            already_in_list = any(m['id'] == oncall_today_id for m in elevator_mechanics)
-            if not already_in_list:
-                mechanics_list.append({
-                    'name': oncall_today['name'],
-                    'has_telegram': bool(oncall_today.get('telegram_chat_id')),
-                    'is_oncall': True,
-                    'status': 'Аварийный'
-                })
+            if not any(m['id'] == oncall_today_id for m in mechanics_list):
+                oncall_to_add = oncall_today
+        else:
+            # Нет дежурного на сегодня - используем следующего по очереди
+            next_oncall = db.get_next_oncall_mechanic()
+            if next_oncall and not any(m['id'] == next_oncall['id'] for m in mechanics_list):
+                oncall_to_add = next_oncall
+        
+        if oncall_to_add:
+            mechanics_list.append({
+                'name': oncall_to_add['name'],
+                'id': oncall_to_add.get('id'),
+                'has_telegram': bool(oncall_to_add.get('telegram_chat_id')),
+                'is_oncall': True,
+                'status': 'Аварийный'
+            })
         
         # Получаем статусы из таблицы ticket_mechanics (реальный ответ из Telegram)
         ticket_mech_statuses = {}
