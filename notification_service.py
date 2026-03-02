@@ -7,9 +7,10 @@ import sys
 sys.path.insert(0, '/Users/swiftpanaev/KIRO/test4')
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from ticket_db import db
 from telegram_bot import send_ticket_to_mechanic, BOT_TOKEN
+from telegram import Bot
 
 
 async def notify_mechanics_about_ticket(ticket_id):
@@ -116,9 +117,17 @@ async def notify_ticket_completed(ticket_id):
     
     try:
         bot = Bot(token=BOT_TOKEN)
+        try:
+            dt = datetime.fromisoformat(ticket['created_at'].replace('Z', '+00:00'))
+            dt = dt + timedelta(hours=4)  # Самара
+            months = ['', 'января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря']
+            created_at_formatted = f"{dt.day} {months[dt.month]} {dt.year} {dt.hour:02d}:{dt.minute:02d}"
+        except:
+            created_at_formatted = ticket['created_at'][:16].replace('T', ' ')
+        
         await bot.send_message(
             chat_id=mechanic['telegram_chat_id'],
-            text=f"✅ Заявка #{ticket['ticket_number']} ЗАВЕРШЕНА оператором!\n\n"
+            text=f"✅ Заявка от {created_at_formatted} ЗАВЕРШЕНА оператором!\n\n"
                  f"Спасибо за работу! 💪"
         )
         return True

@@ -386,9 +386,53 @@ def ticket_detail(ticket_id):
         return "Заявка не найдена", 404
     
     comments = db.get_comments(ticket_id)
+    
+    # Получить информацию о назначенном механике
+    mechanic_info = None
+    if ticket.get('assigned_to'):
+        mechanic = db.get_mechanic(ticket['assigned_to'])
+        if mechanic:
+            # Получить статус из Telegram
+            tg_status = None
+            with db.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT status FROM ticket_mechanics 
+                    WHERE ticket_id = ? AND mechanic_id = ?
+                ''', (ticket_id, ticket['assigned_to']))
+                row = cursor.fetchone()
+                if row:
+                    tg_status = row[0]
+            
+            mechanic_info = {
+                'name': mechanic['name'],
+                'phone': mechanic.get('phone'),
+                'telegram_username': mechanic.get('telegram_username'),
+                'tg_status': tg_status
+            }
+    
+    # Рассчитать время в работе
+    in_work_duration = None
+    if ticket.get('status') == 'в работе' and ticket.get('updated_at'):
+        try:
+            updated = datetime.fromisoformat(ticket['updated_at'].replace('Z', '+00:00'))
+            updated = updated + timedelta(hours=4)  # Самара
+            now = datetime.now() + timedelta(hours=4)
+            diff = now - updated
+            hours = diff.total_seconds() // 3600
+            minutes = (diff.total_seconds() % 3600) // 60
+            if hours > 0:
+                in_work_duration = f"{int(hours)}ч {int(minutes)}мин"
+            else:
+                in_work_duration = f"{int(minutes)}мин"
+        except:
+            pass
+    
     return render_template('ticket_detail.html', 
                          ticket=ticket, 
-                         comments=comments)
+                         comments=comments,
+                         mechanic_info=mechanic_info,
+                         in_work_duration=in_work_duration)
 
 
 @app.route('/new-ticket')
