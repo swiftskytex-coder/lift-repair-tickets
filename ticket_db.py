@@ -484,6 +484,19 @@ class TicketDatabase:
             cursor.execute("SELECT COUNT(*) FROM tickets WHERE status = 'выполнена'")
             completed = cursor.fetchone()[0]
             
+            # Аварийные заявки (срочный приоритет)
+            cursor.execute("SELECT COUNT(*) FROM tickets WHERE priority = 'срочный'")
+            emergency_total = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(*) FROM tickets WHERE priority = 'срочный' AND status = 'новая'")
+            emergency_new = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(*) FROM tickets WHERE priority = 'срочный' AND status = 'в работе'")
+            emergency_in_progress = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(*) FROM tickets WHERE priority = 'срочный' AND status = 'выполнена'")
+            emergency_completed = cursor.fetchone()[0]
+            
             # По приоритетам
             cursor.execute('''
                 SELECT priority, COUNT(*) FROM tickets
@@ -504,7 +517,13 @@ class TicketDatabase:
                 'in_progress': in_progress,
                 'completed': completed,
                 'by_priority': by_priority,
-                'by_source': by_source
+                'by_source': by_source,
+                'emergency': {
+                    'total': emergency_total,
+                    'new': emergency_new,
+                    'in_progress': emergency_in_progress,
+                    'completed': emergency_completed
+                }
             }
     
     def _row_to_dict(self, row):
