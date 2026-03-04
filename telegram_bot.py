@@ -374,9 +374,9 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         created_at_formatted = ticket['created_at'][:16].replace('T', ' ')
     
-    message = f"🚨 Заявка\n"
+    message = f"🚨 Заявка #{ticket['ticket_number']}\n"
     message += f"⏰ {created_at_formatted}\n\n"
-    message += f"📍 Адрес: {address}\n"
+    message += f"📍 {address}\n"
     message += f"⚠️ Приоритет: {ticket['priority']}\n"
     message += f"📊 Статус: {ticket['status']}\n"
     
@@ -601,7 +601,7 @@ async def show_tickets_by_status(update, context, status_filter):
         try:
             dt = datetime.fromisoformat(ticket['created_at'].replace('Z', '+00:00'))
             dt = dt + timedelta(hours=4)
-            months = ['', 'янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек']
+            months = ['', 'января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря']
             created_at_formatted = f"{dt.day} {months[dt.month]} {dt.hour:02d}:{dt.minute:02d}"
             all_dates.append(created_at_formatted)
         except:
@@ -642,6 +642,12 @@ async def show_ticket_details(update, context):
     if not ticket:
         await query.edit_message_text("❌ Заявка не найдена")
         return
+    
+    # Отмечаем как прочитанное
+    chat_id = update.effective_chat.id
+    mechanic = db.get_mechanic_by_telegram(chat_id)
+    if mechanic:
+        db.add_comment(ticket_id, 'system', f'👁️ Заявка просмотрена механиком {mechanic["name"]}')
     
     # Формируем детали
     address = ticket['address'].replace('подъезд', 'п').replace('Подъезд', 'П').replace(' п.', 'п').replace(' П.', 'П').replace(' ', '').replace('ул.', 'ул.').replace('39', ' 39')

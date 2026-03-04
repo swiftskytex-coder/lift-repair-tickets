@@ -36,6 +36,9 @@
             border-radius: 12px;
             padding: 20px;
             transition: transform 0.2s;
+            min-height: 90px;
+            display: flex;
+            align-items: center;
         }
         
         .stat-card:hover {
@@ -50,6 +53,18 @@
             margin-bottom: 10px;
             cursor: pointer;
             transition: all 0.2s;
+        }
+        
+        .ticket-card.status-new {
+            border-left: 4px solid #ef4444;
+        }
+        
+        .ticket-card.status-in-work {
+            border-left: 4px solid #f59e0b;
+        }
+        
+        .ticket-card.status-done {
+            border-left: 4px solid #10b981;
         }
         
         .ticket-card:hover {
@@ -119,46 +134,48 @@
         <!-- Статистика -->
         <div class="row mb-4">
             <div class="col-md-3 mb-3">
-                <div class="stat-card d-flex align-items-center gap-3">
+                <a href="/tickets" class="text-decoration-none">
+                <div class="stat-card d-flex align-items-center gap-3" style="cursor: pointer; border-left: 4px solid #3b82f6;">
                     <div class="stat-icon bg-gradient-primary text-white">
                         <i class="bi bi-inbox"></i>
                     </div>
                     <div>
                         <div class="text-muted small">Всего заявок</div>
-                        <div class="h3 mb-0">{{ stats.total }}</div>
+                        <div class="h3 mb-0" style="color: #3b82f6;">{{ stats.total }}</div>
                     </div>
                 </div>
+                </a>
             </div>
             <div class="col-md-3 mb-3">
-                <div class="stat-card d-flex align-items-center gap-3">
+                <div class="stat-card d-flex align-items-center gap-3" style="border-left: 4px solid #ef4444;">
                     <div class="stat-icon bg-gradient-warning text-white">
                         <i class="bi bi-clock"></i>
                     </div>
                     <div>
                         <div class="text-muted small">Поступило (с 08:00)</div>
-                        <div class="h3 mb-0">{{ shift_stats.new }}</div>
+                        <div class="h3 mb-0" style="color: #ef4444;">{{ shift_stats.new }}</div>
                     </div>
                 </div>
             </div>
             <div class="col-md-3 mb-3">
-                <div class="stat-card d-flex align-items-center gap-3">
+                <div class="stat-card d-flex align-items-center gap-3" style="border-left: 4px solid #f97316;">
                     <div class="stat-icon bg-gradient-info text-white">
                         <i class="bi bi-tools"></i>
                     </div>
                     <div>
                         <div class="text-muted small">В работе (всего)</div>
-                        <div class="h3 mb-0">{{ stats.in_progress }}</div>
+                        <div class="h3 mb-0" style="color: #f97316;">{{ stats.in_progress }}</div>
                     </div>
                 </div>
             </div>
             <div class="col-md-3 mb-3">
-                <div class="stat-card d-flex align-items-center gap-3">
+                <div class="stat-card d-flex align-items-center gap-3" style="border-left: 4px solid #10b981;">
                     <div class="stat-icon bg-gradient-success text-white">
                         <i class="bi bi-check-circle"></i>
                     </div>
                     <div>
                         <div class="text-muted small">Выполнено (с 08:00)</div>
-                        <div class="h3 mb-0">{{ shift_stats.completed }}</div>
+                        <div class="h3 mb-0" style="color: #10b981;">{{ shift_stats.completed }}</div>
                     </div>
                 </div>
             </div>
@@ -245,6 +262,7 @@
                     <span class="badge bg-secondary ms-2">{{ tickets|length }}</span>
                 </div>
                 
+                <div id="ticketsList">
                 <div class="btn-group mb-2" role="group">
                     <input type="radio" class="btn-check" name="statusFilter" id="filterAll" checked autocomplete="off">
                     <label class="btn btn-sm btn-outline-primary" for="filterAll">Все</label>
@@ -260,54 +278,49 @@
                 </div>
 
                 {% for ticket in tickets %}
-                <div class="ticket-card" 
+                {% set status_class = 'status-new' if ticket.status == 'новая' else 'status-in-work' if ticket.status == 'в работе' else 'status-done' %}
+                <div class="ticket-card {{ status_class }}" 
                      data-status="{{ ticket.status }}"
                      onclick="window.location.href='/ticket/{{ ticket.id }}'">
                      <div class="row g-2">
                         <!-- Левая колонка - заявка -->
                         <div class="col-6">
                             <div class="d-flex align-items-center gap-2">
-                                {% if ticket.entrance %}
-                                <span class="badge bg-light text-dark">{{ ticket.entrance }}</span>
+                                {% if ticket.elevator_id_display %}
+                                <span class="badge bg-primary" style="font-size: 12px;">№ {{ ticket.elevator_id_display }}</span>
                                 {% endif %}
                                 <span class="text-white">{{ ticket.created_at|samara_time }}</span>
                                 <span class="priority-badge priority-{{ ticket.priority }}">{{ ticket.priority }}</span>
-                                {% if ticket.status == 'новая' %}
-                                <span class="badge bg-danger">⏳</span>
-                                {% elif ticket.status == 'в работе' %}
-                                <span class="badge bg-warning text-dark">🔧</span>
-                                {% elif ticket.status == 'выполнена' %}
-                                <span class="badge bg-success">✅</span>
-                                {% endif %}
                             </div>
-                            <div class="small mt-1 text-white">{{ ticket.address }}</div>
-                            {% if ticket.mechanics_list %}
+                            <div class="small mt-1 text-white">
+                                <i class="bi bi-geo-alt"></i> {{ ticket.address }}
+                            </div>
+                            {% if ticket.in_work_duration or ticket.mechanics_list %}
                             <div class="mt-1">
+                                {% if ticket.in_work_duration %}
+                                <span class="badge bg-warning text-dark me-1"><i class="bi bi-clock"></i> {{ ticket.in_work_duration }}</span>
+                                {% endif %}
+                                {% if ticket.mechanics_list %}
                                 {% for mech in ticket.mechanics_list %}
-                                <span class="badge bg-secondary me-1" 
-                                      style="font-size: 10px; {% if mech.status == 'Аварийный' %}border: 1px solid #ef4444;{% endif %}"
+                                <span class="text-white me-1" 
                                       data-bs-toggle="tooltip" 
                                       data-bs-title="{% if mech.status == 'Аварийный' %}Аварийный{% else %}Линейный{% endif %} | {% if mech.tg_status == 'accepted' %}Принял{% elif mech.tg_status == 'rejected' %}Отказ{% else %}Отправлено{% endif %}">
                                     {{ mech.name.split()[0] }}
                                     {% if mech.tg_status == 'accepted' %}✓{% elif mech.tg_status == 'rejected' %}✗{% else %}↗{% endif %}
                                 </span>
+                                </span>
                                 {% endfor %}
+                                {% endif %}
                             </div>
                             {% endif %}
                         </div>
-                        <!-- Правая колонка - лог заявки -->
-                        <div class="col-6 text-end" style="max-height: 70px; overflow-y: auto;">
-                            {% if ticket.ticket_log %}
-                            <div class="small text-muted" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                                {% for log in ticket.ticket_log %}
-                                <div>{{ log[:50] }}</div>
-                                {% endfor %}
-                            </div>
-                            {% endif %}
+                        <!-- Правая колонка -->
+                        <div class="col-6 text-end d-flex align-items-center justify-content-end">
                         </div>
                     </div>
                 </div>
                 {% endfor %}
+                </div>
             </div>
         </div>
     </div>
@@ -367,9 +380,20 @@
             });
         });
 
-        // Автообновление каждые 30 секунд
-        setInterval(() => {
-            location.reload();
+        // Автообновление каждые 30 секунд через AJAX
+        setInterval(async () => {
+            try {
+                const response = await fetch('/api/tickets/html');
+                const html = await response.text();
+                document.getElementById('ticketsList').innerHTML = html;
+                // Reinitialize tooltips
+                var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+                var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+                  return new bootstrap.Tooltip(tooltipTriggerEl)
+                })
+            } catch (e) {
+                console.error('Error updating tickets:', e);
+            }
         }, 30000);
 
         // Создание бэкапа

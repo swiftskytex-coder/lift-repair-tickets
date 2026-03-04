@@ -43,9 +43,9 @@ def samara_time_filter(dt):
     try:
         if isinstance(dt, str):
             dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
-        # Добавляем 4 часа для Самары (данные в UTC)
+        # Добавляем 4 часа для Самары (UTC -> Самара)
         dt = dt + timedelta(hours=4)
-        months = ['', 'янв', 'фев', 'март', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек']
+        months = ['', 'января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря']
         return f"{dt.day} {months[dt.month]} {dt.hour:02d}:{dt.minute:02d}"
     except:
         return str(dt)[:16]
@@ -107,12 +107,14 @@ def index():
     # Исключаем выполненные и отмененные заявки из списка последних
     recent_tickets = db.search_tickets(limit=10, exclude_status=['выполнена', 'отменена'])
     
-    # Добавляем подъезд к каждой заявке
+    # Добавляем подъезд и ID лифта к каждой заявке
     for ticket in recent_tickets:
         if ticket.get('elevator_id'):
             elevator = db.get_elevator(ticket['elevator_id'])
-            if elevator and elevator.get('entrance'):
-                ticket['entrance'] = f"п.{elevator['entrance']}"
+            if elevator:
+                if elevator.get('entrance'):
+                    ticket['entrance'] = f"п.{elevator['entrance']}"
+                ticket['elevator_id_display'] = ticket['elevator_id']
     
     # Получить текущего аварийного механика ДО обогащения заявок
     today = datetime.now().strftime('%Y-%m-%d')
@@ -130,6 +132,11 @@ def index():
             comments = db.get_comments(ticket['id'])
             if comments:
                 ticket['last_comment'] = comments[-1].get('text', '')[:50]
+                # Проверяем, было ли просмотрено
+                for c in comments:
+                    if c.get('text', '').startswith('👁️'):
+                        ticket['viewed'] = True
+                        break
         except:
             pass
         
@@ -164,6 +171,23 @@ def index():
             ticket['ticket_log'] = log_entries[:5]
         except:
             pass
+        
+        # Рассчитываем время от создания заявки
+        in_work_duration = None
+        if ticket.get('created_at'):
+            try:
+                created = datetime.strptime(ticket['created_at'][:19], '%Y-%m-%d %H:%M:%S')
+                now = datetime.now() - timedelta(hours=4)
+                diff = now - created
+                hours = diff.total_seconds() // 3600
+                minutes = (diff.total_seconds() % 3600) // 60
+                if hours > 0:
+                    in_work_duration = f"{int(hours)}ч {int(minutes)}м"
+                else:
+                    in_work_duration = f"{int(minutes)}м"
+                ticket['in_work_duration'] = in_work_duration
+            except:
+                pass
         
         # Получаем список механиков для этого лифта
         elevator_mechanics = []
@@ -567,6 +591,40 @@ def api_get_tickets():
         'count': len(tickets),
         'tickets': tickets
     })
+
+
+@app.route('/api/tickets/html', methods=['GET'])
+def api_tickets_html():
+    """Получение HTML списка заявок для AJAX обновления"""
+    recent_tickets = db.search_tickets(limit=10, exclude_status=['выполнена', 'отменена'])
+    
+    # Добавляем данные
+    for ticket in recent_tickets:
+        if ticket.get('elevator_id'):
+            elevator = db.get_elevator(ticket['elevator_id'])
+            if elevator:
+                if elevator.get('entrance'):
+                    ticket['entrance'] = f"п.{elevator['entrance']}"
+                ticket['elevator_id_display'] = ticket['elevator_id']
+        
+        # Статус класс
+        ticket['status_class'] = 'status-new' if ticket.get('status') == 'новая' else 'status-in-work' if ticket.get('status') == 'в работе' else 'status-done'
+        
+        # Время
+        try:
+            created = datetime.strptime(ticket['created_at'][:19], '%Y-%m-%d %H:%M:%S')
+            now = datetime.now() - timedelta(hours=4)
+            diff = now - created
+            hours = diff.total_seconds() // 3600
+            minutes = (diff.total_seconds() % 3600) // 60
+            if hours > 0:
+                ticket['in_work_duration'] = f"{int(hours)}ч {int(minutes)}м"
+            else:
+                ticket['in_work_duration'] = f"{int(minutes)}м"
+        except:
+            pass
+    
+    return render_template('tickets_list_partial.html', tickets=recent_tickets)
 
 
 @app.route('/api/tickets', methods=['POST'])
