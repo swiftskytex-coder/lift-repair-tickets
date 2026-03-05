@@ -4,8 +4,12 @@
      data-status="{{ ticket.status }}"
      onclick="window.location.href='/ticket/{{ ticket.id }}'">
     <div class="row g-2">
-        <div class="col-6">
+        <!-- Левая колонка - заявка -->
+        <div class="col-7">
             <div class="d-flex align-items-center gap-2">
+                {% if ticket.entrance %}
+                <span class="badge bg-secondary" style="font-size: 11px;">{{ ticket.entrance }}</span>
+                {% endif %}
                 {% if ticket.elevator_id_display %}
                 <span class="badge bg-primary" style="font-size: 12px;">№ {{ ticket.elevator_id_display }}</span>
                 {% endif %}
@@ -33,7 +37,15 @@
             </div>
             {% endif %}
         </div>
-        <div class="col-6 text-end d-flex align-items-center justify-content-end">
+        <!-- Правая колонка - история -->
+        <div class="col-5 text-end">
+            {% if ticket.ticket_log %}
+            <div class="ticket-log text-end">
+                {% for log in ticket.ticket_log %}
+                <div class="small text-muted">{{ log }}</div>
+                {% endfor %}
+            </div>
+            {% endif %}
         </div>
     </div>
 </div>

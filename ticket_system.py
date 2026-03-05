@@ -479,6 +479,18 @@ def elevators_list():
     return render_template('elevators.html', elevators=elevators)
 
 
+@app.route('/help')
+def help_page():
+    """Страница справки"""
+    return render_template('help.html')
+
+
+@app.route('/about')
+def about_page():
+    """О программе"""
+    return render_template('about.html')
+
+
 @app.route('/mechanics')
 def mechanics_list():
     """Справочник механиков"""
