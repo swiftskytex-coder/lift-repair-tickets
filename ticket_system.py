@@ -479,6 +479,7 @@ def elevators_list():
     return render_template('elevators.html', elevators=elevators)
 
 
+
 @app.route('/help')
 def help_page():
     """Страница справки"""
@@ -487,8 +488,15 @@ def help_page():
 
 @app.route('/about')
 def about_page():
-    """О программе"""
-    return render_template('about.html')
+    """О программе - редирект на главную с открытием модального окна"""
+    return '''
+    <!DOCTYPE html>
+    <html>
+    <script>
+        window.location.href = "/?about=1";
+    </script>
+    </html>
+    '''
 
 
 @app.route('/mechanics')

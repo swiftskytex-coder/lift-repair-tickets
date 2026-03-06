@@ -10,11 +10,15 @@
         body { background-color: #0f1419; color: #fff; }
         .navbar { background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%) !important; }
         .help-section { background: #1c2833; border: 1px solid #2d3f50; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
-        .help-section h3 { color: #3b82f6; border-bottom: 1px solid #2d3f50; padding-bottom: 10px; }
-        .help-section h5 { color: #f97316; margin-top: 15px; }
+        .help-section h3 { color: #3b82f6; border-bottom: 1px solid #2d3f50; padding-bottom: 10px; margin-bottom: 15px; }
+        .help-section h5 { color: #f97316; margin-top: 15px; margin-bottom: 10px; }
         .help-section ul { padding-left: 20px; }
-        .help-section li { margin-bottom: 8px; }
-        .kbd { background: #2d3f50; padding: 2px 8px; border-radius: 4px; font-family: monospace; }
+        .help-section li { margin-bottom: 8px; color: #d1d5db; }
+        .kbd { background: #2d3f50; padding: 2px 8px; border-radius: 4px; font-family: monospace; color: #fbbf24; }
+        .info-card { background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%); border-radius: 12px; padding: 25px; margin-bottom: 25px; }
+        .nav-pills .nav-link { color: #d1d5db; }
+        .nav-pills .nav-link.active { background-color: #3b82f6; }
+        .feature-icon { font-size: 24px; margin-right: 10px; }
     </style>
 </head>
 <body>
@@ -31,88 +35,187 @@
     </nav>
 
     <div class="container py-4">
-        <h2 class="mb-4"><i class="bi bi-question-circle"></i> Справка</h2>
-        
-        <!-- Карточка о программе -->
-        <div class="help-section" style="border-left: 4px solid #3b82f6;">
+        <!-- Инфо карточка -->
+        <div class="info-card">
             <div class="row align-items-center">
                 <div class="col-auto">
-                    <i class="bi bi-tools" style="font-size: 48px; color: #3b82f6;"></i>
+                    <i class="bi bi-tools" style="font-size: 48px;"></i>
                 </div>
                 <div class="col">
-                    <h4 class="mb-1">Система заявок на ремонт лифтов</h4>
-                    <p class="text-muted mb-0">Версия 1.0 | Самара (UTC+4) | SQLite + Flask + Telegram</p>
+                    <h3 class="mb-1">Система заявок на ремонт лифтов</h3>
+                    <p class="mb-0 opacity-75">Версия 1.0 | Самара (UTC+4) | Flask + SQLite + Telegram</p>
                 </div>
             </div>
         </div>
-        
-        <div class="help-section">
-            <h3><i class="bi bi-card-list"></i> Основные понятия</h3>
-            <ul>
-                <li><strong>Заявка</strong> - обращение о неисправности лифта</li>
-                <li><strong>Статусы заявки:</strong>
-                    <ul>
-                        <li><span style="color: #ef4444;">Новая</span> - поступила, не назначена</li>
-                        <li><span style="color: #f97316;">В работе</span> - назначена механику</li>
-                        <li><span style="color: #10b981;">Выполнена</span> - ремонт завершён</li>
+
+        <div class="row">
+            <!-- Боковое меню -->
+            <div class="col-md-3">
+                <div class="help-section">
+                    <ul class="nav nav-pills flex-column" id="helpTabs" role="tablist">
+                        <li class="nav-item"><a class="nav-link active" data-bs-toggle="pill" href="#basics">Основы</a></li>
+                        <li class="nav-item"><a class="nav-link" data-bs-toggle="pill" href="#interface">Интерфейс</a></li>
+                        <li class="nav-item"><a class="nav-link" data-bs-toggle="pill" href="#tickets">Заявки</a></li>
+                        <li class="nav-item"><a class="nav-link" data-bs-toggle="pill" href="#telegram">Telegram</a></li>
+                        <li class="nav-item"><a class="nav-link" data-bs-toggle="pill" href="#shortcuts">Горячие клавиши</a></li>
                     </ul>
-                </li>
-                <li><strong>Приоритет:</strong> срочный, высокий, обычный, низкий</li>
-            </ul>
-        </div>
-
-        <div class="help-section">
-            <h3><i class="bi bi-ui-checks"></i> Интерфейс оператора</h3>
+                </div>
+            </div>
             
-            <h5>Главная страница</h5>
-            <ul>
-                <li>Верхняя панель - кнопки действий и переключатель темы</li>
-                <li>Карточки статистики - количество заявок по статусам</li>
-                <li>Список заявок - активные заявки с фильтрами</li>
-            </ul>
-            
-            <h5>Фильтры заявок</h5>
-            <ul>
-                <li><span class="kbd">Все</span> - показать все заявки</li>
-                <li><span class="kbd">Новые</span> - только новые заявки</li>
-                <li><span class="kbd">В работе</span> - заявки в работе</li>
-                <li><span class="kbd">Готовы</span> - выполненные заявки</li>
-            </ul>
-            
-            <h5>Карточка заявки</h5>
-            <ul>
-                <li>Левая часть - подъезд, номер лифта, время, адрес, механики</li>
-                <li>Правая часть - история изменений</li>
-                <li>Клик по карточке - открыть детали</li>
-            </ul>
-        </div>
-
-        <div class="help-section">
-            <h3><i class="bi bi-journal-text"></i> Создание заявки</h3>
-            <ul>
-                <li>Нажмите <strong>"Новая заявка"</strong> в верхней панели</li>
-                <li>Выберите лифт из справочника или введите адрес вручную</li>
-                <li>Опишите проблему и выберите приоритет</li>
-                <li>Система автоматически отправит уведомление аварийному механику</li>
-            </ul>
-        </div>
-
-        <div class="help-section">
-            <h3><i class="bi bi-arrow-repeat"></i> Автообновление</h3>
-            <ul>
-                <li>Список заявок обновляется автоматически каждые 30 секунд</li>
-                <li>Аварийные заявки (срочный приоритет) выделены в отдельную секцию</li>
-            </ul>
-        </div>
-
-        <div class="help-section">
-            <h3><i class="bi bi-telegram"></i> Telegram бот</h3>
-            <ul>
-                <li>Механики получают заявки в Telegram</li>
-                <li>Могут принять или отклонить заявку</li>
-                <li>Команда <span class="kbd">/my</span> - список активных заявок</li>
-            </ul>
+            <!-- Контент -->
+            <div class="col-md-9">
+                <div class="tab-content">
+                    
+                    <!-- Основы -->
+                    <div class="tab-pane fade show active" id="basics">
+                        <div class="help-section">
+                            <h3><i class="bi bi-book"></i> Основные понятия</h3>
+                            
+                            <h5>Что такое заявка?</h5>
+                            <p>Заявка — это обращение о неисправности лифта, которое поступает от диспетчера и передаётся механику для выполнения.</p>
+                            
+                            <h5>Статусы заявки</h5>
+                            <ul>
+                                <li><strong style="color: #ef4444;">Новая</strong> — заявка поступила, но ещё не назначена механику</li>
+                                <li><strong style="color: #f97316;">В работе</strong> — заявка назначена механику, идёт ремонт</li>
+                                <li><strong style="color: #10b981;">Выполнена</strong> — ремонт завершён</li>
+                                <li><strong style="color: #6b7280;">Отменена</strong> — заявка отменена (ложный вызов и т.д.)</li>
+                            </ul>
+                            
+                            <h5>Приоритеты</h5>
+                            <ul>
+                                <li><span class="kbd">срочный</span> — аварийная ситуация, требует немедленного реагирования</li>
+                                <li><span class="kbd">высокий</span> — серьёзная неисправность, влияющая на работу лифта</li>
+                                <li><span class="kbd">обычный</span> — стандартная заявка на ремонт</li>
+                                <li><span class="kbd">низкий</span> — плановое обслуживание или мелкие неполадки</li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <!-- Интерфейс -->
+                    <div class="tab-pane fade" id="interface">
+                        <div class="help-section">
+                            <h3><i class="bi bi-display"></i> Интерфейс оператора</h3>
+                            
+                            <h5>Главная страница</h5>
+                            <ul>
+                                <li><strong>Верхняя панель</strong> — кнопки действий и переключатель темы день/ночь</li>
+                                <li><strong>Карточки статистики</strong> — показывают количество заявок по статусам:
+                                    <ul>
+                                        <li>Всего заявок — общее количество в системе</li>
+                                        <li>Поступило — новые заявки с 08:00</li>
+                                        <li>В работе — заявки в статусе "в работе"</li>
+                                        <li>Выполнено — завершённые заявки с 08:00</li>
+                                    </ul>
+                                </li>
+                                <li><strong>Список заявок</strong> — активные заявки с фильтрами</li>
+                            </ul>
+                            
+                            <h5>Фильтры заявок</h5>
+                            <ul>
+                                <li><span class="kbd">Все</span> — показать все активные заявки</li>
+                                <li><span class="kbd">Новые</span> — только новые заявки</li>
+                                <li><span class="kbd">В работе</span> — заявки в статусе "в работе"</li>
+                                <li><span class="kbd">Готовы</span> — выполненные заявки</li>
+                            </ul>
+                            
+                            <h5>Карточка заявки</h5>
+                            <ul>
+                                <li><strong>Левая часть:</strong> подъезд, номер лифта, время создания, приоритет, адрес, механики</li>
+                                <li><strong>Правая часть:</strong> история изменений (последние действия)</li>
+                                <li>Клик по карточке — открыть полные детали заявки</li>
+                            </ul>
+                            
+                            <h5>Тема оформления</h5>
+                            <p>Кнопка <i class="bi bi-moon"></i> в верхней панели переключает между тёмной и светлой темой. Выбор сохраняется в браузере.</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Заявки -->
+                    <div class="tab-pane fade" id="tickets">
+                        <div class="help-section">
+                            <h3><i class="bi bi-journal-text"></i> Работа с заявками</h3>
+                            
+                            <h5>Создание заявки</h5>
+                            <ol>
+                                <li>Нажмите <strong>"Новая заявка"</strong> в верхней панели</li>
+                                <li>Выберите лифт из справочника или введите адрес вручную</li>
+                                <li>Опишите проблему в поле "Описание"</li>
+                                <li>Выберите приоритет (срочный/высокий/обычный/низкий)</li>
+                                <li>Нажмите "Создать заявку"</li>
+                            </ol>
+                            
+                            <h5>Назначение механика</h5>
+                            <p>При создании заявки система автоматически отправляет уведомление:</p>
+                            <ul>
+                                <li>Аварийному механику — если приоритет "срочный"</li>
+                                <li>Линейному механику — для обычных заявок</li>
+                            </ul>
+                            
+                            <h5>Автообновление</h5>
+                            <p>Список заявок на главной странице обновляется автоматически каждые 30 секунд без перезагрузки страницы.</p>
+                            
+                            <h5>Детали заявки</h5>
+                            <p>На странице деталей можно:</p>
+                            <ul>
+                                <li>Просмотреть полную информацию о заявке</li>
+                                <li>Изменить статус</li>
+                                <li>Добавить комментарии</li>
+                                <li>Просмотреть историю всех действий</li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <!-- Telegram -->
+                    <div class="tab-pane fade" id="telegram">
+                        <div class="help-section">
+                            <h3><i class="bi bi-telegram"></i> Telegram бот</h3>
+                            
+                            <h5>Для механиков</h5>
+                            <p>Механики получают заявки в Telegram и могут:</p>
+                            <ul>
+                                <li>Принять заявку — нажав кнопку "Принять"</li>
+                                <li>Отклонить заявку — с указанием причины</li>
+                                <li>Отправить фотоотчёт — после выполнения ремонта</li>
+                            </ul>
+                            
+                            <h5>Команды бота</h5>
+                            <ul>
+                                <li><span class="kbd">/my</span> — показать мои активные заявки</li>
+                                <li><span class="kbd">/start</span> — начать работу с ботом</li>
+                                <li><span class="kbd">/help</span> — справка по боту</li>
+                            </ul>
+                            
+                            <h5>Статусы в боте</h5>
+                            <ul>
+                                <li><span style="color: #fbbf24;">↗</span> — уведомление отправлено</li>
+                                <li><span style="color: #10b981;">✓</span> — механик принял заявку</li>
+                                <li><span style="color: #ef4444;">✗</span> — механик отклонил заявку</li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <!-- Горячие клавиши -->
+                    <div class="tab-pane fade" id="shortcuts">
+                        <div class="help-section">
+                            <h3><i class="bi bi-keyboard"></i> Горячие клавиши</h3>
+                            
+                            <h5>Навигация</h5>
+                            <ul>
+                                <li><span class="kbd">Ctrl</span> + <span class="kbd">R</span> — обновить страницу</li>
+                                <li><span class="kbd">F5</span> — обновить страницу</li>
+                            </ul>
+                            
+                            <h5>Примечание</h5>
+                            <p>其他 горячие клавиши будут добавлены в будущих версиях.</p>
+                        </div>
+                    </div>
+                    
+                </div>
+            </div>
         </div>
     </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

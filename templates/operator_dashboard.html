@@ -222,11 +222,9 @@
                     </a>
                     <div class="dropdown">
                         <button class="btn btn-sm btn-outline-light dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="bi bi-list"></i> Все заявки
+                            <i class="bi bi-list"></i> Меню
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item" href="/tickets"><i class="bi bi-list-ul me-2"></i>Список всех заявок</a></li>
-                            <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="/elevators"><i class="bi bi-building me-2"></i>Справочник лифтов</a></li>
                             <li><a class="dropdown-item" href="/mechanics"><i class="bi bi-people me-2"></i>Механики</a></li>
                             <li><a class="dropdown-item" href="/oncall"><i class="bi bi-calendar-check me-2"></i>Аварийные дежурства</a></li>
@@ -234,8 +232,8 @@
                             <li><a class="dropdown-item" href="#" onclick="createBackup(); return false;"><i class="bi bi-download me-2"></i>Сделать бэкап</a></li>
                             <li><a class="dropdown-item" href="#" onclick="openRestoreModal(); return false;"><i class="bi bi-upload me-2"></i>Восстановить из бэкапа</a></li>
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="/help"><i class="bi bi-question-circle me-2"></i>Справка</a></li>
-                            <li><a class="dropdown-item" href="/about"><i class="bi bi-info-circle me-2"></i>О программе</a></li>
+                            <li><a class="dropdown-item" href="/help" target="_blank"><i class="bi bi-question-circle me-2"></i>Справка</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="showAboutModal(); return false;"><i class="bi bi-info-circle me-2"></i>О программе</a></li>
                         </ul>
                     </div>
                 </div>
@@ -293,64 +291,7 @@
             </div>
         </div>
 
-        <!-- Аварийные заявки -->
-        {% if stats.emergency %}
-        <div class="row mb-4">
-            <div class="col-12">
-                <div class="section-title mb-2" style="color: #ef4444;">
-                    <i class="bi bi-exclamation-triangle"></i> Аварийные заявки
-                </div>
-            </div>
-            <div class="col-lg-3 col-md-6 mb-3">
-                <div class="stat-card d-flex align-items-center gap-3" style="cursor: pointer; border-left: 4px solid #dc2626; background: #2d1f1f;">
-                    <div class="stat-icon text-white" style="background: #dc2626;">
-                        <i class="bi bi-inbox"></i>
-                    </div>
-                    <div>
-                        <div class="text-muted small">Всего аварийных</div>
-                        <div class="h3 mb-0" style="color: #dc2626;">{{ stats.emergency.total }}</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-lg-3 col-md-6 mb-3">
-                <div class="stat-card d-flex align-items-center gap-3" style="border-left: 4px solid #ef4444; background: #2d1f1f;">
-                    <div class="stat-icon text-white" style="background: #ef4444;">
-                        <i class="bi bi-clock"></i>
-                    </div>
-                    <div>
-                        <div class="text-muted small">Поступило</div>
-                        <div class="h3 mb-0" style="color: #ef4444;">{{ stats.emergency.new }}</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-lg-3 col-md-6 mb-3">
-                <div class="stat-card d-flex align-items-center gap-3" style="border-left: 4px solid #f97316; background: #2d1f1f;">
-                    <div class="stat-icon text-white" style="background: #f97316;">
-                        <i class="bi bi-tools"></i>
-                    </div>
-                    <div>
-                        <div class="text-muted small">В работе</div>
-                        <div class="h3 mb-0" style="color: #f97316;">{{ stats.emergency.in_progress }}</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-lg-3 col-md-6 mb-3">
-                <div class="stat-card d-flex align-items-center gap-3" style="border-left: 4px solid #10b981; background: #2d1f1f;">
-                    <div class="stat-icon text-white" style="background: #10b981;">
-                        <i class="bi bi-check-circle"></i>
-                    </div>
-                    <div>
-                        <div class="text-muted small">Выполнено</div>
-                        <div class="h3 mb-0" style="color: #10b981;">{{ stats.emergency.completed }}</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        {% endif %}
-
         <div class="row">
-            <!-- Аварийный механик (в navbar) -->
-            
             <!-- Заявки -->
             <div class="col-12">
                 <div class="section-title mb-2">
@@ -532,6 +473,13 @@
                 icon.classList.remove('bi-moon');
                 icon.classList.add('bi-sun');
             }
+            // Проверка параметра about для открытия модального окна
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('about') === '1') {
+                showAboutModal();
+                // Очистить URL
+                window.history.replaceState({}, document.title, "/");
+            }
         });
 
         // Создание бэкапа
@@ -648,6 +596,54 @@
                 modal.style.display = 'none';
             }
         }
+
+        // Показать модальное окно "О программе"
+        function showAboutModal() {
+            const modal = document.getElementById('aboutModal');
+            modal.style.display = 'flex';
+        }
+
+        // Закрыть модальное окно "О программе"
+        function closeAboutModal() {
+            document.getElementById('aboutModal').style.display = 'none';
+        }
     </script>
+
+    <!-- Модальное окно О программе -->
+    <div id="aboutModal" style="display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); align-items: center; justify-content: center;">
+        <div style="background: #1c2833; border: 1px solid #2d3f50; border-radius: 16px; padding: 30px; max-width: 450px; width: 90%; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
+            <div class="text-center mb-4">
+                <i class="bi bi-tools" style="font-size: 56px; color: #3b82f6;"></i>
+                <h3 class="mt-3 mb-1">Система заявок</h3>
+                <p class="text-muted mb-0">Версия 1.0</p>
+            </div>
+            <hr style="border-color: #2d3f50;">
+            <div class="mb-3">
+                <div class="d-flex justify-content-between py-2" style="border-bottom: 1px solid #2d3f50;">
+                    <span class="text-muted">Время сервера</span>
+                    <span>Самара (UTC+4)</span>
+                </div>
+                <div class="d-flex justify-content-between py-2" style="border-bottom: 1px solid #2d3f50;">
+                    <span class="text-muted">База данных</span>
+                    <span>SQLite</span>
+                </div>
+                <div class="d-flex justify-content-between py-2" style="border-bottom: 1px solid #2d3f50;">
+                    <span class="text-muted">Веб-фреймворк</span>
+                    <span>Flask</span>
+                </div>
+                <div class="d-flex justify-content-between py-2">
+                    <span class="text-muted">Telegram бот</span>
+                    <span class="text-success"><i class="bi bi-check-circle"></i> Включён</span>
+                </div>
+            </div>
+            <hr style="border-color: #2d3f50;">
+            <p class="text-muted small text-center mb-3">
+                Система для автоматизации обработки заявок на ремонт лифтов.
+            </p>
+            <div class="text-center">
+                <button class="btn btn-primary" onclick="closeAboutModal()">Закрыть</button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
