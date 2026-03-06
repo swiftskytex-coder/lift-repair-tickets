@@ -411,29 +411,34 @@ def ticket_detail(ticket_id):
     
     comments = db.get_comments(ticket_id)
     
-    # Получить информацию о назначенном механике
-    mechanic_info = None
-    if ticket.get('assigned_to'):
-        mechanic = db.get_mechanic(ticket['assigned_to'])
-        if mechanic:
-            # Получить статус из Telegram
-            tg_status = None
-            with db.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute('''
-                    SELECT status FROM ticket_mechanics 
-                    WHERE ticket_id = ? AND mechanic_id = ?
-                ''', (ticket_id, ticket['assigned_to']))
-                row = cursor.fetchone()
-                if row:
-                    tg_status = row[0]
-            
-            mechanic_info = {
-                'name': mechanic['name'],
-                'phone': mechanic.get('phone'),
-                'telegram_username': mechanic.get('telegram_username'),
-                'tg_status': tg_status
-            }
+    # Получить всех механиков, которым отправлялась заявка
+    ticket_mechanics = []
+    with db.get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT m.name, m.phone, tm.status, tm.sent_at, tm.responded_at
+            FROM ticket_mechanics tm
+            JOIN mechanics m ON tm.mechanic_id = m.id
+            WHERE tm.ticket_id = ?
+            ORDER BY tm.sent_at DESC
+        ''', (ticket_id,))
+        for row in cursor.fetchall():
+            ticket_mechanics.append({
+                'name': row[0],
+                'phone': row[1],
+                'status': row[2],
+                'sent_at': row[3],
+                'responded_at': row[4]
+            })
+    
+    # Отделить фото от обычных комментариев
+    photo_comments = []
+    regular_comments = []
+    for c in comments:
+        if c.get('text', '').startswith('[ФОТО]'):
+            photo_comments.append(c)
+        else:
+            regular_comments.append(c)
     
     # Рассчитать время в работе
     in_work_duration = None
@@ -455,7 +460,9 @@ def ticket_detail(ticket_id):
     return render_template('ticket_detail.html', 
                          ticket=ticket, 
                          comments=comments,
-                         mechanic_info=mechanic_info,
+                         regular_comments=regular_comments,
+                         photo_comments=photo_comments,
+                         ticket_mechanics=ticket_mechanics,
                          in_work_duration=in_work_duration)
 
 

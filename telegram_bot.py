@@ -123,10 +123,7 @@ async def send_ticket_to_mechanic(ticket_id, mechanic_chat_id):
     
     # Кнопки действий
     keyboard = [
-        [
-            InlineKeyboardButton("✅ Принять", callback_data=f"accept_{ticket_id}"),
-            InlineKeyboardButton("❌ Отказаться", callback_data=f"reject_{ticket_id}")
-        ]
+        [InlineKeyboardButton("✅ Принять в работу", callback_data=f"accept_{ticket_id}")]
     ]
     
     try:
@@ -161,15 +158,18 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             print(f"DEBUG: mechanic not found!")
             return
         
+        name = mechanic['name']
+        
         # Обновляем статус заявки
         db.update_ticket(ticket_id, {'assigned_to': str(mechanic['id'])}, 'telegram_bot')
         db.update_ticket_status(ticket_id, 'в работе', 'telegram_bot')
         
         # Логируем принятие
         db.accept_ticket(ticket_id, mechanic['id'])
+        db.add_comment(ticket_id, 'system', f"👤 Механик {name} принял заявку в работу")
         
         await query.edit_message_text(
-            query.message.text + "\n\n✅ ЗАЯВКА ПРИНЯТА"
+            query.message.text + "\n\n✅ ЗАЯВКА ПРИНЯТА В РАБОТУ"
         )
         
         # Сохраняем ID заявки для приема фото
@@ -177,20 +177,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     elif data.startswith("reject_"):
         ticket_id = int(data.split("_")[1])
-        
-        # Логируем отказ
-        mechanic = db.get_mechanic_by_telegram(chat_id)
-        name = mechanic['name'] if mechanic else "Неизвестный"
-        
-        db.add_comment(ticket_id, 'system', f"❌ Механик {name} отказался от заявки")
-        
-        # Логируем отказ в таблице
-        if mechanic:
-            db.reject_ticket(ticket_id, mechanic['id'])
-        
-        await query.edit_message_text(
-            query.message.text + "\n\n❌ ВЫ ОТКАЗАЛИСЬ ОТ ЗАЯВКИ"
-        )
+        # Отказ от заявки - больше не используется
+        await query.answer("Функция отказа недоступна", show_alert=True)
     
     elif data.startswith("select_"):
         ticket_id = int(data.split("_")[1])
@@ -211,30 +199,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("📷 Отправить фото", callback_data=f"photo_{ticket_id}")],
                 [InlineKeyboardButton("✅ Завершить", callback_data=f"complete_{ticket_id}")],
-                [InlineKeyboardButton("❌ Не смог выполнить", callback_data=f"cant_fix_{ticket_id}")],
                 [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_tickets")]
             ])
         )
 
     elif data.startswith("cant_fix_"):
-        ticket_id = int(data.split("_")[1])
-        
-        # Логируем неудачу
-        mechanic = db.get_mechanic_by_telegram(chat_id)
-        name = mechanic['name'] if mechanic else "Неизвестный"
-        
-        db.add_comment(ticket_id, 'system', f"⚠️ Механик {name} не смог выполнить заявку и вернул её в очередь.")
-        
-        # Сбрасываем статус на "новая" и убираем исполнителя
-        # ВАЖНО: assigned_to ставим NULL или пустую строку, чтобы другие могли взять
-        db.update_ticket(ticket_id, {'assigned_to': None}, 'telegram_bot')
-        db.update_ticket_status(ticket_id, 'новая', 'telegram_bot', notes=f"Вернута механиком {name}")
-        
-        await query.edit_message_text(
-            f"⚠️ Заявка возвращена в статус 'Новая'.\nОператор уведомлен."
-        )
-        if chat_id in user_data:
-            del user_data[chat_id]
+        # Функция возврата заявки отключена
+        await query.answer("Функция недоступна", show_alert=True)
 
     elif data.startswith("back_to_tickets"):
         await my_tickets_menu(update, context)
@@ -678,7 +649,6 @@ async def show_ticket_details(update, context):
     
     if ticket['status'] == 'новая':
         keyboard.append([InlineKeyboardButton("✅ Принять", callback_data=f"accept_{ticket_id}")])
-        keyboard.append([InlineKeyboardButton("❌ Отказаться", callback_data=f"reject_{ticket_id}")])
     elif ticket['status'] == 'в работе':
         keyboard.append([
             InlineKeyboardButton("🚗 В пути", callback_data=f"quick_onway_{ticket_id}"),

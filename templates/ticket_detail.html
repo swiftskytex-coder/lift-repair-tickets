@@ -517,6 +517,61 @@
                 </div>
                 {% endif %}
 
+                <!-- Механики -->
+                {% if ticket_mechanics %}
+                <div class="detail-card">
+                    <div class="section-title">
+                        <i class="bi bi-people" style="color: #3b82f6;"></i> Механики
+                    </div>
+                    <div class="mechanics-list">
+                        {% for mech in ticket_mechanics %}
+                        <div class="mechanic-item d-flex align-items-center justify-content-between py-2" style="border-bottom: 1px solid #2d3f50;">
+                            <div>
+                                <div class="fw-semibold">{{ mech.name }}</div>
+                                <div class="small text-muted">{{ mech.phone }}</div>
+                            </div>
+                            <div class="text-end">
+                                {% if mech.status == 'accepted' %}
+                                <span class="badge bg-success"><i class="bi bi-check-circle"></i> Принял</span>
+                                {% elif mech.status == 'rejected' %}
+                                <span class="badge bg-danger"><i class="bi bi-x-circle"></i> Отказ</span>
+                                {% elif mech.status == 'sent' %}
+                                <span class="badge bg-warning text-dark"><i class="bi bi-send"></i> Отправлено</span>
+                                {% endif %}
+                                <div class="small text-muted mt-1">
+                                    <i class="bi bi-clock"></i> {{ mech.sent_at|samara_time if mech.sent_at else '' }}
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Фотографии -->
+                {% if photo_comments %}
+                <div class="detail-card">
+                    <div class="section-title">
+                        <i class="bi bi-camera" style="color: #f97316;"></i> Фотографии
+                    </div>
+                    <div class="row g-2">
+                        {% for photo in photo_comments %}
+                        <div class="col-6 col-md-4">
+                            <a href="{{ photo.text.replace('[ФОТО] ', '') }}" target="_blank">
+                                <img src="{{ photo.text.replace('[ФОТО] ', '') }}" 
+                                     class="img-fluid rounded" 
+                                     style="height: 120px; width: 100%; object-fit: cover; cursor: pointer;"
+                                     alt="Фото отчёт">
+                            </a>
+                            <div class="small text-muted mt-1">
+                                <i class="bi bi-clock"></i> {{ photo.created_at|samara_time if photo.created_at else '' }}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
                 <!-- История -->
                 <div class="detail-card">
                     <div class="section-title">
