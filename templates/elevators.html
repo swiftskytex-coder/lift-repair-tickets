@@ -32,14 +32,16 @@
             padding: 4px 8px;
             font-size: 12px;
         }
+        .action-buttons {
+            opacity: 0;
+            display: flex;
+            gap: 4px;
+            justify-content: center;
+            transition: opacity 0.2s;
+        }
 
         .elevator-row:hover .action-buttons {
             opacity: 1;
-        }
-
-        .action-buttons {
-            opacity: 0;
-            transition: opacity 0.2s;
         }
 
         /* Цвета для разных типов лифтов */
@@ -126,18 +128,19 @@
                         {% for elevator in elevators %}
                         <tr class="elevator-row" data-id="{{ elevator.elevator_id }}">
                             <td class="fw-bold">{{ elevator.elevator_id }}</td>
-                            <td>{{ elevator.address }}</td>
-                            <td>{% if elevator.entrance %}{{ elevator.entrance }}{% else %}-{% endif %}</td>
+                            <td style="min-width: 250px;">{{ elevator.address }}</td>
+                            <td style="max-width: 60px;">{% if elevator.entrance %}{{ elevator.entrance }}{% else %}-{% endif %}</td>
                             <td>
                                 <span class="type-badge type-{{ elevator.elevator_type }}">{{ elevator.elevator_type }}</span>
                             </td>
                             <td>
                                 {% if elevator.mechanics %}
                                 {% for m in elevator.mechanics[:2] %}
-                                <span class="badge bg-secondary me-1">{{ m.name }}</span>
+                                {% set colors = ['#6b7280', '#4b5563', '#374151', '#7c3aed', '#065f46', '#7c2d12', '#0e7490', '#831843'] %}
+                                <span class="badge me-1" style="background-color: {{ colors[m.name|length % colors|length] }};">{{ m.name }}</span>
                                 {% endfor %}
                                 {% if elevator.mechanics|length > 2 %}
-                                <span class="badge bg-secondary">+{{ elevator.mechanics|length - 2 }}</span>
+                                <span class="badge" style="background-color: #374151;">+{{ elevator.mechanics|length - 2 }}</span>
                                 {% endif %}
                                 {% else %}
                                 <span class="text-muted">—</span>
@@ -152,26 +155,7 @@
                                 <span class="badge bg-secondary">{{ elevator.status }}</span>
                                 {% endif %}
                             </td>
-                            <td><code>{{ elevator.serial_number or '-' }}</code></td>
-                            <td>
-                                <span class="type-badge type-{{ elevator.elevator_type }}">{{ elevator.elevator_type }}</span>
-                            </td>
-                            <td>
-                                {% if elevator.mechanics %}
-                                    {% for mechanic in elevator.mechanics %}
-                                        <span class="badge bg-info text-dark me-1">{{ mechanic.name }}</span>
-                                    {% endfor %}
-                                {% else %}
-                                    <span class="text-muted">-</span>
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% if elevator.status == 'active' %}
-                                    <span class="badge bg-success">Активен</span>
-                                {% else %}
-                                    <span class="badge bg-secondary">{{ elevator.status }}</span>
-                                {% endif %}
-                            </td>
+                            <td style="min-width: 130px;"><code>{{ elevator.serial_number or '-' }}</code></td>
                             <td>
                                 <div class="action-buttons">
                                     <button class="btn btn-sm btn-outline-primary action-btn" 
@@ -386,7 +370,9 @@
             document.getElementById('elevatorAddress').value = address;
             document.getElementById('elevatorEntrance').value = entrance || '';
             document.getElementById('elevatorType').value = type || 'пассажирский';
-            document.getElementById('elevatorStatus').value = status || 'active';
+            var statusEl = document.getElementById('elevatorStatus');
+            statusEl.value = status || 'active';
+            if (!statusEl.value) statusEl.value = 'active';
             document.getElementById('serialNumber').value = serialNumber || '';
             
             await loadMechanicsList();
@@ -421,6 +407,21 @@
             if (!data.elevator_id || !data.address) {
                 showError('Заполните обязательные поля');
                 return;
+            }
+
+            // Проверка на дублирование серийного номера
+            if (data.serial_number) {
+                const existingResponse = await fetch('/api/elevators');
+                const existingData = await existingResponse.json();
+                const originalId = document.getElementById('originalId').value;
+                const duplicate = existingData.elevators.find(e => 
+                    e.serial_number === data.serial_number && 
+                    e.elevator_id !== originalId
+                );
+                if (duplicate) {
+                    showError('Серийный номер уже используется для лифта: ' + duplicate.elevator_id);
+                    return;
+                }
             }
 
             try {
