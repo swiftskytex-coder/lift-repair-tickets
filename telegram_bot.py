@@ -612,7 +612,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def my_tickets_menu(update, context, filter_type='active'):
-    """Показать все заявки механика"""
+    """Показать заявки механика"""
     chat_id = update.effective_chat.id
     
     # Проверяем что это callback query (кнопка нажата)
@@ -630,9 +630,15 @@ async def my_tickets_menu(update, context, filter_type='active'):
         return
     
     # Получаем все заявки механика
-    tickets = db.get_all_mechanic_tickets(mechanic['id'])
+    all_tickets = db.get_all_mechanic_tickets(mechanic['id'])
     
-    title = "📋 Все заявки"
+    # Фильтруем только активные (в работе)
+    if filter_type == 'active':
+        tickets = [t for t in all_tickets if t.get('status') == 'в работе']
+        title = "🔧 Заявки в работе"
+    else:
+        tickets = all_tickets
+        title = "📋 Все заявки"
     
     if not tickets:
         await reply_func(f"{title}\n\nЗаявок нет", reply_markup=InlineKeyboardMarkup([
@@ -640,11 +646,11 @@ async def my_tickets_menu(update, context, filter_type='active'):
         ]))
         return
     
-    message = f"{title}\n\n\n\n"  # пустые строки для высоты
+    message = f"{title}\n\n"
     keyboard = []
     
-    # Ограничиваем 3 заявками
-    display_tickets = tickets[:3]
+    # Ограничиваем 5 заявками
+    display_tickets = tickets[:5]
     
     for ticket in display_tickets:
         status_emoji = "⏳"
@@ -653,7 +659,7 @@ async def my_tickets_menu(update, context, filter_type='active'):
         elif ticket.get('status') == 'выполнена':
             status_emoji = "✅"
         
-        address = ticket['address'].replace('подъезд', 'п').replace('Подъезд', 'П').replace(' п.', 'п').replace(' П.', 'П').replace(' ', '').replace('ул.', 'ул.').replace('39', ' 39')
+        address = ticket['address'].replace('подъезд', 'п').replace('Подъезд', 'П').replace(' п.', 'п').replace(' П.', 'П').replace(' ', '').replace('ул.', 'ул.')
         
         # Кнопка без нумерации, эмодзи в начале
         short_addr = address[:20] + "..." if len(address) > 20 else address
@@ -813,6 +819,12 @@ async def my_tickets(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_text_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка текстовых кнопок меню"""
     text = update.message.text
+    chat_id = update.effective_chat.id
+    
+    # Если ожидаем ввод деталей ремонта - обрабатываем отдельно
+    if chat_id in user_data and user_data[chat_id].get('status') == 'awaiting_work_details':
+        await handle_work_details(update, context)
+        return
     
     if text == "🛗 Мои лифты":
         await my_lifts(update, context)
@@ -862,7 +874,6 @@ def main():
     application.add_handler(CommandHandler("my_tickets", my_tickets))
     application.add_handler(CallbackQueryHandler(handle_callback))
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_work_details))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_buttons))
     
     print("🤖 Telegram бот запущен!")

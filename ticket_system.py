@@ -802,9 +802,12 @@ def api_create_ticket():
             import threading
             def send_notification():
                 try:
+                    print(f"🔔 Запуск отправки уведомления для заявки #{ticket['ticket_number']}")
                     asyncio.run(notify_mechanics_about_ticket(ticket['id']))
                 except Exception as e:
                     print(f"❌ Ошибка отправки уведомления: {e}")
+                    import traceback
+                    traceback.print_exc()
             
             notification_thread = threading.Thread(target=send_notification)
             notification_thread.daemon = True

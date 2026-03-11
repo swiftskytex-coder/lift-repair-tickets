@@ -230,7 +230,7 @@
                             <li><a class="dropdown-item" href="/oncall"><i class="bi bi-calendar-check me-2"></i>Аварийные дежурства</a></li>
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="http://localhost:8082" target="_blank"><i class="bi bi-book me-2"></i>База знаний</a></li>
-                            <li><a class="dropdown-item" href="#" onclick="createBackup(); return false;"><i class="bi bi-download me-2"></i>Сделать бэкап</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="createBackup(event); return false;"><i class="bi bi-download me-2"></i>Сделать бэкап</a></li>
                             <li><a class="dropdown-item" href="#" onclick="openRestoreModal(); return false;"><i class="bi bi-upload me-2"></i>Восстановить из бэкапа</a></li>
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="/help" target="_blank"><i class="bi bi-question-circle me-2"></i>Справка</a></li>
@@ -484,8 +484,9 @@
         });
 
         // Создание бэкапа
-        async function createBackup() {
-            const btn = event.target.closest('button');
+        async function createBackup(event) {
+            event.preventDefault();
+            const btn = event.target.closest('button') || event.target;
             const originalText = btn.innerHTML;
             btn.disabled = true;
             btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Создаётся...';
