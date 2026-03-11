@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,21 +7,68 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <style>
+        :root {
+            --bg-primary: #0f1419;
+            --bg-card: #1c2833;
+            --border-color: #2d3f50;
+            --text-primary: #ffffff;
+            --text-secondary: #9ca3af;
+        }
+        
+        [data-bs-theme="dark"] body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+        }
+        
+        [data-bs-theme="dark"] .detail-card {
+            background: var(--bg-card);
+            border-color: var(--border-color);
+        }
+        
+        [data-bs-theme="dark"] .detail-card p,
+        [data-bs-theme="dark"] .detail-card .section-title,
+        [data-bs-theme="dark"] .detail-card .info-label,
+        [data-bs-theme="dark"] .detail-card .info-value {
+            color: var(--text-primary);
+        }
+        
+        [data-bs-theme="dark"] .detail-card .text-muted {
+            color: var(--text-secondary) !important;
+        }
+        
+        [data-bs-theme="light"] body {
+            background-color: #f5f5f5;
+            color: #212529;
+        }
+        
+        [data-bs-theme="light"] .detail-card {
+            background: #ffffff;
+            border-color: #dee2e6;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        [data-bs-theme="light"] .text-muted {
+            color: #6c757d !important;
+        }
+        
+        [data-bs-theme="light"] .section-title {
+            color: #6c757d;
+        }
+        
         body {
-            background-color: #f3f4f6;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
         
         .navbar {
-            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+            background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%) !important;
         }
         
         .detail-card {
-            background: white;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
             border-radius: 12px;
             padding: 24px;
             margin-bottom: 20px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
         
         .header-card {
@@ -30,6 +77,18 @@
             border-radius: 12px;
             padding: 24px;
             margin-bottom: 20px;
+        }
+        
+        .header-card,
+        .header-card .text-white,
+        .header-card .text-muted,
+        .header-card h2 {
+            color: white !important;
+        }
+        
+        [data-bs-theme="light"] .header-card {
+            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+            color: white;
         }
         
         .status-badge {
@@ -135,6 +194,8 @@
         .timeline-item.status-work::before { background: #f59e0b; box-shadow: 0 0 0 2px #f59e0b; }
         .timeline-item.status-done::before { background: #10b981; box-shadow: 0 0 0 2px #10b981; }
         .timeline-item.status-cancelled::before { background: #ef4444; box-shadow: 0 0 0 2px #ef4444; }
+        .timeline-item.status-sent::before { background: #3b82f6; box-shadow: 0 0 0 2px #3b82f6; }
+        .timeline-item.status-photo::before { background: #f97316; box-shadow: 0 0 0 2px #f97316; }
         
         .comment-card {
             background: #f9fafb;
@@ -232,6 +293,16 @@
             text-align: center;
         }
         
+        [data-bs-theme="dark"] .step-label {
+            color: #9ca3af;
+        }
+        
+        [data-bs-theme="dark"] .progress-step.active .step-label,
+        [data-bs-theme="dark"] .progress-step.completed .step-label {
+            color: #ffffff;
+            font-weight: 500;
+        }
+        
         .progress-step.active .step-label,
         .progress-step.completed .step-label {
             color: #1f2937;
@@ -267,6 +338,9 @@
                 <span>Система заявок на ремонт лифтов</span>
             </a>
             <div class="d-flex gap-2">
+                <button class="btn btn-sm btn-outline-light" onclick="toggleTheme()" title="День/Ночь">
+                    <i class="bi bi-moon" id="themeIcon"></i>
+                </button>
                 <a href="/tickets" class="btn btn-outline-light btn-sm">
                     <i class="bi bi-list"></i> Список
                 </a>
@@ -300,61 +374,62 @@
             </div>
         </div>
 
-        <!-- Шапка -->
+        <!-- Основная карточка -->
         <div class="header-card">
             <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
-                <div>
-                    <h2 class="mb-2 fw-bold">
-                        <i class="bi bi-file-text"></i>
-                        Заявка #{{ ticket.ticket_number }}
-                    </h2>
-                    <div class="d-flex gap-2 flex-wrap align-items-center">
-                        {% if ticket.status == 'новая' %}
-                        <span class="status-badge" style="background: #dbeafe; color: #1e40af;">
-                            <i class="bi bi-clock"></i> Новая
-                        </span>
-                        {% elif ticket.status == 'в работе' %}
-                        <span class="status-badge" style="background: #fef3c7; color: #92400e;">
-                            <i class="bi bi-wrench"></i> В работе
-                        </span>
-                        {% elif ticket.status == 'выполнена' %}
-                        <span class="status-badge" style="background: #d1fae5; color: #065f46;">
-                            <i class="bi bi-check-circle"></i> Выполнена
-                        </span>
-                        {% elif ticket.status == 'отменена' %}
-                        <span class="status-badge" style="background: #fee2e2; color: #991b1b;">
-                            <i class="bi bi-x-circle"></i> Отменена
-                        </span>
-                        {% endif %}
-                        
-                        <span class="priority-badge priority-{{ ticket.priority }}">
-                            {% if ticket.priority == 'срочный' %}<i class="bi bi-exclamation-triangle"></i>
-                            {% elif ticket.priority == 'высокий' %}<i class="bi bi-arrow-up"></i>
-                            {% elif ticket.priority == 'обычный' %}<i class="bi bi-dash"></i>
-                            {% else %}<i class="bi bi-arrow-down"></i>
-                            {% endif %}
-                            {{ ticket.priority }}
-                        </span>
-                        
-                        {% if ticket.status == 'в работе' and in_work_duration %}
-                        <span class="time-badge">
-                            <i class="bi bi-hourglass-split"></i> {{ in_work_duration }}
-                        </span>
-                        {% endif %}
-                    </div>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    {% if ticket.elevator_id %}
+                    <span class="badge bg-warning text-dark" style="font-size: 14px;">лифт {{ ticket.elevator_id }}</span>
+                    {% endif %}
+                    <span class="fw-bold" style="font-size: 16px;">{{ ticket.address }}</span>
+                    <span class="opacity-75" style="font-size: 12px;">#{{ ticket.ticket_number }}</span>
                 </div>
-                <div class="text-end">
-                    <div class="d-flex align-items-center justify-content-end gap-2 mb-1">
-                        <i class="bi bi-calendar-event"></i>
-                        <span class="fw-semibold">{{ ticket.created_at|samara_time if ticket.created_at else '—' }}</span>
-                    </div>
-                    <div class="source-badge">
-                        {% if ticket.source == 'phone' %}<i class="bi bi-telephone"></i> Телефон
-                        {% elif ticket.source == 'mobile_app' %}<i class="bi bi-phone"></i> Мобильное приложение
-                        {% elif ticket.source == 'operator' %}<i class="bi bi-person"></i> Оператор
-                        {% else %}{{ ticket.source }}
+                <div class="d-flex gap-2 align-items-center flex-wrap">
+                    {% if ticket.status == 'новая' %}
+                    <span class="status-badge" style="background: #dbeafe; color: #1e40af;">
+                        <i class="bi bi-clock"></i> Новая
+                    </span>
+                    {% elif ticket.status == 'в работе' %}
+                    <span class="status-badge" style="background: #fef3c7; color: #92400e;">
+                        <i class="bi bi-wrench"></i> В работе
+                    </span>
+                    {% elif ticket.status == 'выполнена' %}
+                    <span class="status-badge" style="background: #d1fae5; color: #065f46;">
+                        <i class="bi bi-check-circle"></i> Выполнена
+                    </span>
+                    {% elif ticket.status == 'отменена' %}
+                    <span class="status-badge" style="background: #fee2e2; color: #991b1b;">
+                        <i class="bi bi-x-circle"></i> Отменена
+                    </span>
+                    {% endif %}
+                    
+                    {% if ticket.priority != 'обычный' %}
+                    <span class="priority-badge priority-{{ ticket.priority }}">
+                        {% if ticket.priority == 'срочный' %}<i class="bi bi-exclamation-triangle"></i>
+                        {% elif ticket.priority == 'высокий' %}<i class="bi bi-arrow-up"></i>
+                        {% else %}<i class="bi bi-arrow-down"></i>
                         {% endif %}
-                    </div>
+                        {{ ticket.priority }}
+                    </span>
+                    {% endif %}
+                    
+                    {% if ticket.status == 'в работе' and in_work_duration %}
+                    <span class="time-badge">
+                        <i class="bi bi-hourglass-split"></i> {{ in_work_duration }}
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="d-flex justify-content-between align-items-center mt-2 pt-2" style="border-top: 1px solid rgba(255,255,255,0.2);">
+                <div class="small opacity-75">
+                    <i class="bi bi-calendar-event"></i> {{ ticket.created_at|samara_time if ticket.created_at else '—' }}
+                </div>
+                <div class="small opacity-75">
+                    {% if ticket.source == 'phone' %}<i class="bi bi-telephone"></i> Телефон
+                    {% elif ticket.source == 'mobile_app' %}<i class="bi bi-phone"></i> Мобильное приложение
+                    {% elif ticket.source == 'operator' %}<i class="bi bi-person"></i> Оператор
+                    {% else %}{{ ticket.source }}
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -362,149 +437,13 @@
         <div class="row">
             <!-- Левая колонка - Информация -->
             <div class="col-lg-8">
-                <!-- Адрес и оборудование -->
-                <div class="detail-card">
-                    <div class="section-title">
-                        <i class="bi bi-geo-alt-fill" style="color: #3b82f6;"></i> Адрес и оборудование
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label"><i class="bi bi-building"></i> Адрес</span>
-                        <span class="info-value">{{ ticket.address }}</span>
-                    </div>
-                    {% if ticket.elevator_id %}
-                    <div class="info-row">
-                        <span class="info-label"><i class="bi bi-upc-scan"></i> ID лифта</span>
-                        <span class="info-value">
-                            <span class="badge bg-primary">{{ ticket.elevator_id }}</span>
-                        </span>
-                    </div>
-                    {% endif %}
-                    {% if ticket.elevator_type %}
-                    <div class="info-row">
-                        <span class="info-label"><i class="bi bi-grid-3x3-gap"></i> Тип лифта</span>
-                        <span class="info-value">{{ ticket.elevator_type }}</span>
-                    </div>
-                    {% endif %}
-                </div>
-
+                
                 <!-- Описание проблемы -->
                 <div class="detail-card">
                     <div class="section-title">
                         <i class="bi bi-exclamation-circle-fill" style="color: #f59e0b;"></i> Описание проблемы
                     </div>
                     <p class="mb-0" style="font-size: 15px; line-height: 1.6;">{{ ticket.problem_description }}</p>
-                </div>
-
-                <!-- Назначенный механик -->
-                {% if mechanic_info or ticket.assigned_to %}
-                <div class="detail-card">
-                    <div class="section-title">
-                        <i class="bi bi-person-fill" style="color: #10b981;"></i> Назначенный механик
-                    </div>
-                    <div class="mechanic-card">
-                        {% if mechanic_info %}
-                        <div class="d-flex align-items-center gap-3">
-                            <div class="mechanic-avatar">
-                                {% set name_parts = mechanic_info.name.split() %}
-                                {{ name_parts[0][0] }}{{ name_parts[1][0] if name_parts|length > 1 else '' }}
-                            </div>
-                            <div class="flex-grow-1">
-                                <div class="fw-semibold" style="font-size: 16px;">{{ mechanic_info.name }}</div>
-                                <div class="d-flex gap-3 mt-1">
-                                    {% if mechanic_info.phone %}
-                                    <a href="tel:{{ mechanic_info.phone }}" class="text-decoration-none">
-                                        <i class="bi bi-telephone"></i> {{ mechanic_info.phone }}
-                                    </a>
-                                    {% endif %}
-                                    {% if mechanic_info.telegram_username %}
-                                    <span class="text-muted">
-                                        <i class="bi bi-telegram"></i> @{{ mechanic_info.telegram_username }}
-                                    </span>
-                                    {% endif %}
-                                </div>
-                            </div>
-                            <div>
-                                {% if mechanic_info.tg_status == 'accepted' %}
-                                <span class="badge bg-success"><i class="bi bi-check-circle"></i> Принял</span>
-                                {% elif mechanic_info.tg_status == 'rejected' %}
-                                <span class="badge bg-danger"><i class="bi bi-x-circle"></i> Отказ</span>
-                                {% else %}
-                                <span class="badge bg-warning"><i class="bi bi-clock"></i> Ожидает</span>
-                                {% endif %}
-                            </div>
-                        </div>
-                        {% else %}
-                        <div class="text-muted"><i class="bi bi-person-x"></i> Механик не назначен</div>
-                        {% endif %}
-                    </div>
-                </div>
-                {% endif %}
-
-                <!-- Комментарии -->
-                <div class="detail-card">
-                    <div class="section-title">
-                        <i class="bi bi-chat-left-text-fill" style="color: #8b5cf6;"></i> Комментарии
-                    </div>
-                    
-                    {% if comments %}
-                        {% for comment in comments %}
-                        <div class="comment-card">
-                            <div class="d-flex justify-content-between align-items-start mb-2">
-                                <span class="fw-semibold">
-                                    <i class="bi bi-person-circle"></i> {{ comment.author }}
-                                </span>
-                                <small class="text-muted">{{ comment.created_at|samara_time if comment.created_at else comment.created_at[:16].replace('T', ' ') }}</small>
-                            </div>
-                            <p class="mb-0">{{ comment.text }}</p>
-                        </div>
-                        {% endfor %}
-                    {% else %}
-                        <p class="text-muted"><i class="bi bi-chat-dots"></i> Нет комментариев</p>
-                    {% endif %}
-                    
-                    <!-- Добавить комментарий -->
-                    <form id="commentForm" class="mt-3">
-                        <div class="input-group">
-                            <input type="text" class="form-control" id="commentText" placeholder="Добавить комментарий..." required>
-                            <button class="btn btn-primary" type="submit">
-                                <i class="bi bi-send"></i>
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-
-            <!-- Правая колонка - Действия и история -->
-            <div class="col-lg-4">
-                <!-- Действия -->
-                <div class="detail-card">
-                    <div class="section-title">
-                        <i class="bi bi-gear-fill" style="color: #6366f1;"></i> Действия
-                    </div>
-                    
-                    {% if ticket.status != 'в работе' and ticket.status != 'выполнена' and ticket.status != 'отменена' %}
-                    <button class="btn btn-warning action-btn w-100 mb-2" onclick="updateStatus('в работе')">
-                        <i class="bi bi-play-circle-fill"></i> Взять в работу
-                    </button>
-                    {% endif %}
-                    
-                    {% if ticket.status == 'в работе' %}
-                    <button class="btn btn-success action-btn w-100 mb-2" onclick="updateStatus('выполнена')">
-                        <i class="bi bi-check-circle-fill"></i> Завершить
-                    </button>
-                    {% endif %}
-                    
-                    {% if ticket.status != 'выполнена' and ticket.status != 'отменена' %}
-                    <button class="btn btn-outline-danger action-btn w-100" onclick="updateStatus('отменена')">
-                        <i class="bi bi-x-circle-fill"></i> Отменить
-                    </button>
-                    {% endif %}
-                    
-                    {% if ticket.status == 'отменена' %}
-                    <button class="btn btn-outline-secondary action-btn w-100" onclick="updateStatus('новая')">
-                        <i class="bi bi-arrow-counterclockwise"></i> Вернуть в работу
-                    </button>
-                    {% endif %}
                 </div>
 
                 <!-- Заметки оператора -->
@@ -514,37 +453,6 @@
                         <i class="bi bi-pencil-fill" style="color: #f59e0b;"></i> Заметки оператора
                     </div>
                     <p class="text-muted mb-0">{{ ticket.operator_notes }}</p>
-                </div>
-                {% endif %}
-
-                <!-- Механики -->
-                {% if ticket_mechanics %}
-                <div class="detail-card">
-                    <div class="section-title">
-                        <i class="bi bi-people" style="color: #3b82f6;"></i> Механики
-                    </div>
-                    <div class="mechanics-list">
-                        {% for mech in ticket_mechanics %}
-                        <div class="mechanic-item d-flex align-items-center justify-content-between py-2" style="border-bottom: 1px solid #2d3f50;">
-                            <div>
-                                <div class="fw-semibold">{{ mech.name }}</div>
-                                <div class="small text-muted">{{ mech.phone }}</div>
-                            </div>
-                            <div class="text-end">
-                                {% if mech.status == 'accepted' %}
-                                <span class="badge bg-success"><i class="bi bi-check-circle"></i> Принял</span>
-                                {% elif mech.status == 'rejected' %}
-                                <span class="badge bg-danger"><i class="bi bi-x-circle"></i> Отказ</span>
-                                {% elif mech.status == 'sent' %}
-                                <span class="badge bg-warning text-dark"><i class="bi bi-send"></i> Отправлено</span>
-                                {% endif %}
-                                <div class="small text-muted mt-1">
-                                    <i class="bi bi-clock"></i> {{ mech.sent_at|samara_time if mech.sent_at else '' }}
-                                </div>
-                            </div>
-                        </div>
-                        {% endfor %}
-                    </div>
                 </div>
                 {% endif %}
 
@@ -572,27 +480,30 @@
                 </div>
                 {% endif %}
 
-                <!-- История -->
+                <!-- История (единый Timeline) -->
                 <div class="detail-card">
                     <div class="section-title">
-                        <i class="bi bi-clock-history" style="color: #6b7280;"></i> История изменений
+                        <i class="bi bi-clock-history" style="color: #6b7280;"></i> История
                     </div>
                     <div class="timeline">
-                        {% for event in ticket.history %}
-                        <div class="timeline-item 
-                            {% if 'Создание' in event.action %}status-created
-                            {% elif 'Принят' in event.action %}status-accepted
-                            {% elif 'в работе' in event.action|lower %}status-work
-                            {% elif 'выполнен' in event.action|lower %}status-done
-                            {% elif 'отмен' in event.action|lower %}status-cancelled
-                            {% endif %}">
-                            <div class="small text-muted">
-                                <i class="bi bi-clock"></i> {{ event.timestamp|samara_time if event.timestamp else event.timestamp[:16].replace('T', ' ') }}
+                        {% for event in timeline %}
+                        <div class="timeline-item {{ event.color }}">
+                            <div class="small" style="color: #9ca3af;">
+                                <i class="bi bi-clock"></i> 
+                                {% if event.timestamp %}
+                                    {{ event.timestamp[:16].replace('T', ' ') }}
+                                {% endif %}
                             </div>
-                            <div class="fw-semibold">{{ event.action }}</div>
-                            <div class="small text-muted">
-                                <i class="bi bi-person"></i> {{ event.user }}
+                            <div>
+                                <i class="{{ event.icon }}"></i> {{ event.action }}
                             </div>
+                            {% if event.type == 'photo' and event.photo_path %}
+                            <div class="mt-2">
+                                <a href="{{ event.photo_path }}" target="_blank">
+                                    <img src="{{ event.photo_path }}" style="height: 60px; border-radius: 4px;" alt="Фото">
+                                </a>
+                            </div>
+                            {% endif %}
                         </div>
                         {% endfor %}
                     </div>
@@ -686,6 +597,36 @@
                 }
             } catch (error) {
                 console.error('Error:', error);
+            }
+        });
+    </script>
+    
+    <script>
+        function toggleTheme() {
+            const html = document.documentElement;
+            const icon = document.getElementById('themeIcon');
+            const isDark = html.getAttribute('data-bs-theme') === 'dark';
+            
+            if (isDark) {
+                html.setAttribute('data-bs-theme', 'light');
+                icon.classList.remove('bi-moon');
+                icon.classList.add('bi-sun');
+                localStorage.setItem('theme', 'light');
+            } else {
+                html.setAttribute('data-bs-theme', 'dark');
+                icon.classList.remove('bi-sun');
+                icon.classList.add('bi-moon');
+                localStorage.setItem('theme', 'dark');
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const savedTheme = localStorage.getItem('theme') || 'dark';
+            document.documentElement.setAttribute('data-bs-theme', savedTheme);
+            const icon = document.getElementById('themeIcon');
+            if (savedTheme === 'light') {
+                icon.classList.remove('bi-moon');
+                icon.classList.add('bi-sun');
             }
         });
     </script>

@@ -457,12 +457,104 @@ def ticket_detail(ticket_id):
         except:
             pass
     
+    # Создать объединённую историю (timeline)
+    timeline = []
+    
+    # 1. История изменений статуса
+    import json
+    history_data = ticket.get('history', '[]')
+    if isinstance(history_data, str):
+        try:
+            history_data = json.loads(history_data)
+        except:
+            history_data = []
+    elif not history_data:
+        history_data = []
+    
+    for h in history_data:
+        ts = h.get('timestamp', '')
+        if ts:
+            try:
+                dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+                ts_sort = dt.timestamp()
+            except:
+                ts_sort = 0
+        else:
+            ts_sort = 0
+        timeline.append({
+            'timestamp': ts,
+            'timestamp_sort': ts_sort,
+            'type': 'status',
+            'action': h.get('action', ''),
+            'user': h.get('user', ''),
+            'icon': 'bi-arrow-repeat',
+            'color': 'status-work'
+        })
+    
+    # 2. Отправка механикам
+    for mech in ticket_mechanics:
+        if mech.get('sent_at'):
+            ts = mech['sent_at']
+            try:
+                dt = datetime.strptime(ts[:19], '%Y-%m-%d %H:%M:%S')
+                ts_sort = dt.timestamp()
+            except:
+                ts_sort = 0
+            timeline.append({
+                'timestamp': ts,
+                'timestamp_sort': ts_sort,
+                'type': 'mechanic_sent',
+                'action': f'📤 Заявка отправлена {mech["name"]}',
+                'user': 'system',
+                'icon': 'bi-send',
+                'color': 'status-sent'
+            })
+        if mech.get('responded_at') and mech['status'] == 'accepted':
+            ts = mech['responded_at']
+            try:
+                dt = datetime.strptime(ts[:19], '%Y-%m-%d %H:%M:%S')
+                ts_sort = dt.timestamp()
+            except:
+                ts_sort = 0
+            timeline.append({
+                'timestamp': ts,
+                'timestamp_sort': ts_sort,
+                'type': 'mechanic_accepted',
+                'action': f'👤 {mech["name"]} принял заявку',
+                'user': 'system',
+                'icon': 'bi-check-circle',
+                'color': 'status-accepted'
+            })
+    
+    # 3. Фотоотчёты
+    for p in photo_comments:
+        ts = p.get('created_at', '')
+        if ts:
+            try:
+                dt = datetime.strptime(ts[:19], '%Y-%m-%d %H:%M:%S')
+                ts_sort = dt.timestamp()
+            except:
+                ts_sort = 0
+        else:
+            ts_sort = 0
+        timeline.append({
+            'timestamp': ts,
+            'timestamp_sort': ts_sort,
+            'type': 'photo',
+            'action': '📸 Фотоотчёт',
+            'user': p.get('author', ''),
+            'icon': 'bi-camera',
+            'color': 'status-photo',
+            'photo_path': p.get('text', '').replace('[ФОТО] ', '')
+        })
+    
+    # Сортируем по времени (новые сверху)
+    timeline.sort(key=lambda x: x['timestamp_sort'], reverse=True)
+    
     return render_template('ticket_detail.html', 
                          ticket=ticket, 
                          comments=comments,
-                         regular_comments=regular_comments,
-                         photo_comments=photo_comments,
-                         ticket_mechanics=ticket_mechanics,
+                         timeline=timeline,
                          in_work_duration=in_work_duration)
 
 
