@@ -113,12 +113,12 @@
                     <thead>
                         <tr>
                             <th>ID</th>
-                            <th>Серийный №</th>
                             <th>Адрес</th>
                             <th>Подъезд</th>
                             <th>Тип</th>
                             <th>Механик</th>
                             <th>Статус</th>
+                            <th>Номер</th>
                             <th>Действия</th>
                         </tr>
                     </thead>
@@ -126,9 +126,33 @@
                         {% for elevator in elevators %}
                         <tr class="elevator-row" data-id="{{ elevator.elevator_id }}">
                             <td class="fw-bold">{{ elevator.elevator_id }}</td>
-                            <td><code>{{ elevator.serial_number or '-' }}</code></td>
                             <td>{{ elevator.address }}</td>
                             <td>{% if elevator.entrance %}{{ elevator.entrance }}{% else %}-{% endif %}</td>
+                            <td>
+                                <span class="type-badge type-{{ elevator.elevator_type }}">{{ elevator.elevator_type }}</span>
+                            </td>
+                            <td>
+                                {% if elevator.mechanics %}
+                                {% for m in elevator.mechanics[:2] %}
+                                <span class="badge bg-secondary me-1">{{ m.name }}</span>
+                                {% endfor %}
+                                {% if elevator.mechanics|length > 2 %}
+                                <span class="badge bg-secondary">+{{ elevator.mechanics|length - 2 }}</span>
+                                {% endif %}
+                                {% else %}
+                                <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if elevator.status == 'active' %}
+                                <span class="badge bg-success">Активен</span>
+                                {% elif elevator.status == 'maintenance' %}
+                                <span class="badge bg-warning">На обслуж.</span>
+                                {% else %}
+                                <span class="badge bg-secondary">{{ elevator.status }}</span>
+                                {% endif %}
+                            </td>
+                            <td><code>{{ elevator.serial_number or '-' }}</code></td>
                             <td>
                                 <span class="type-badge type-{{ elevator.elevator_type }}">{{ elevator.elevator_type }}</span>
                             </td>
