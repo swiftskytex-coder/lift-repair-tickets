@@ -62,10 +62,23 @@ def save_to_knowledge_base(ticket, mechanic_name=None, work_details=None):
                 photo_path = row[0].replace('[ФОТО] ', '')
                 photos.append(photo_path)
         
+        # Получаем серийный номер лифта
+        serial_number = None
+        with db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT serial_number FROM elevators WHERE elevator_id = ?",
+                (ticket.get('elevator_id'),)
+            )
+            row = cursor.fetchone()
+            if row:
+                serial_number = row[0]
+        
         # Формируем описание решения
         solution_text = f"""Заявка #{ticket['ticket_number']}
 Адрес: {ticket['address']}
-Лифт: {ticket.get('elevator_id', 'N/A')}
+Лифт ID: {ticket.get('elevator_id', 'N/A')}
+Серийный номер: {serial_number or 'N/A'}
 Проблема: {ticket.get('problem_description', 'N/A')}
 """
         if work_details:
@@ -79,7 +92,9 @@ def save_to_knowledge_base(ticket, mechanic_name=None, work_details=None):
             'solution_text': solution_text,
             'parts_used': {},
             'category': 'ремонт',
-            'equipment_type': ticket.get('elevator_type', 'пассажирский')
+            'equipment_type': ticket.get('elevator_type', 'пассажирский'),
+            'serial_number': serial_number,
+            'photos': photos
         }
         
         # Отправляем в KB
