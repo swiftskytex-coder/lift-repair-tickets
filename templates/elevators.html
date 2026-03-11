@@ -113,6 +113,7 @@
                     <thead>
                         <tr>
                             <th>ID</th>
+                            <th>Серийный №</th>
                             <th>Адрес</th>
                             <th>Подъезд</th>
                             <th>Тип</th>
@@ -125,6 +126,7 @@
                         {% for elevator in elevators %}
                         <tr class="elevator-row" data-id="{{ elevator.elevator_id }}">
                             <td class="fw-bold">{{ elevator.elevator_id }}</td>
+                            <td><code>{{ elevator.serial_number or '-' }}</code></td>
                             <td>{{ elevator.address }}</td>
                             <td>{% if elevator.entrance %}{{ elevator.entrance }}{% else %}-{% endif %}</td>
                             <td>
@@ -149,7 +151,7 @@
                             <td>
                                 <div class="action-buttons">
                                     <button class="btn btn-sm btn-outline-primary action-btn" 
-                                            onclick="openEditModal('{{ elevator.elevator_id }}', '{{ elevator.address }}', '{{ elevator.entrance or '' }}', '{{ elevator.elevator_type }}', '{{ elevator.status }}')">
+                                            onclick="openEditModal('{{ elevator.elevator_id }}', '{{ elevator.address }}', '{{ elevator.entrance or '' }}', '{{ elevator.elevator_type }}', '{{ elevator.status }}', '{{ elevator.serial_number or '' }}')">
                                         <i class="bi bi-pencil"></i>
                                     </button>
                                     <button class="btn btn-sm btn-outline-danger action-btn" 
@@ -191,6 +193,12 @@
                             <label class="form-label">ID лифта *</label>
                             <input type="text" class="form-control" id="elevatorId" name="elevator_id" required 
                                    placeholder="например: 001">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Заводской серийный номер</label>
+                            <input type="text" class="form-control" id="serialNumber" name="serial_number" 
+                                   placeholder="например: ЛП-0611-12345">
+                            <div class="form-text">Серийный номер (используется в базе знаний)</div>
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Адрес *</label>
@@ -346,7 +354,7 @@
         }
 
         // Открыть модальное окно для редактирования
-        async function openEditModal(id, address, entrance, type, mechanic, status) {
+        async function openEditModal(id, address, entrance, type, mechanic, status, serialNumber = '') {
             isEditMode = true;
             document.getElementById('modalTitle').textContent = 'Редактировать лифт';
             document.getElementById('originalId').value = id;
@@ -355,6 +363,7 @@
             document.getElementById('elevatorEntrance').value = entrance || '';
             document.getElementById('elevatorType').value = type || 'пассажирский';
             document.getElementById('elevatorStatus').value = status || 'active';
+            document.getElementById('serialNumber').value = serialNumber || '';
             
             await loadMechanicsList();
             await loadElevatorMechanics(id);
@@ -377,6 +386,7 @@
             const formData = new FormData(form);
             const data = {
                 elevator_id: formData.get('elevator_id'),
+                serial_number: formData.get('serial_number'),
                 address: formData.get('address'),
                 entrance: formData.get('entrance'),
                 elevator_type: formData.get('elevator_type'),

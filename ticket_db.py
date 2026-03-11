@@ -110,6 +110,12 @@ class TicketDatabase:
             except sqlite3.OperationalError:
                 pass  # Колонка уже существует
             
+            # Миграция: добавляем серийный номер (заводской)
+            try:
+                cursor.execute('ALTER TABLE elevators ADD COLUMN serial_number TEXT')
+            except sqlite3.OperationalError:
+                pass  # Колонка уже существует
+            
             # Таблица механиков
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS mechanics (
@@ -166,6 +172,35 @@ class TicketDatabase:
                     FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE,
                     FOREIGN KEY (mechanic_id) REFERENCES mechanics(id) ON DELETE CASCADE,
                     UNIQUE(ticket_id, mechanic_id)
+                )
+            ''')
+            
+            # Таблица отчётов о ремонте (База знаний)
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS repair_reports (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ticket_id INTEGER NOT NULL,
+                    mechanic_id INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    
+                    -- Проблема (копия из заявки)
+                    problem_description TEXT,
+                    elevator_id TEXT,
+                    address TEXT,
+                    
+                    -- Выполненные работы
+                    work_done TEXT NOT NULL,
+                    parts_used TEXT,
+                    time_spent INTEGER,  -- минуты
+                    
+                    -- notes - свободные заметки
+                    notes TEXT,
+                    
+                    -- Фото (JSON массив путей к файлам)
+                    photos TEXT,
+                    
+                    FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE,
+                    FOREIGN KEY (mechanic_id) REFERENCES mechanics(id) ON DELETE SET NULL
                 )
             ''')
             
@@ -550,10 +585,11 @@ class TicketDatabase:
             cursor = conn.cursor()
             cursor.execute('''
                 INSERT OR REPLACE INTO elevators 
-                (elevator_id, address, entrance, elevator_type, mechanic, description, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (elevator_id, serial_number, address, entrance, elevator_type, mechanic, description, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 data.get('elevator_id'),
+                data.get('serial_number'),
                 data.get('address'),
                 data.get('entrance'),
                 data.get('elevator_type', 'пассажирский'),
