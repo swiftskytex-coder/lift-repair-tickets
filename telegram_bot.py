@@ -8,6 +8,8 @@ sys.path.insert(0, '/Users/swiftpanaev/KIRO/test4')
 
 import os
 import asyncio
+import json
+import requests
 from datetime import datetime, timedelta
 from ticket_db import db
 
@@ -40,6 +42,61 @@ BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
 
 # Хранилище временных данных
 user_data = {}
+
+# URL базы знаний
+KB_URL = os.getenv('KNOWLEDGE_BASE_URL', 'http://localhost:8082')
+
+
+def save_to_knowledge_base(ticket, mechanic_name=None, work_details=None):
+    """Сохраняет отчёт о ремонте в базу знаний"""
+    try:
+        # Собираем фото
+        photos = []
+        with db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT text FROM comments WHERE ticket_id = ? AND author = 'mechanic' AND text LIKE '[ФОТО]%'",
+                (ticket['id'],)
+            )
+            for row in cursor.fetchall():
+                photo_path = row[0].replace('[ФОТО] ', '')
+                photos.append(photo_path)
+        
+        # Формируем описание решения
+        solution_text = f"""Заявка #{ticket['ticket_number']}
+Адрес: {ticket['address']}
+Лифт: {ticket.get('elevator_id', 'N/A')}
+Проблема: {ticket.get('problem_description', 'N/A')}
+"""
+        if work_details:
+            solution_text += f"\nВыполненные работы:\n{work_details}\n"
+        
+        solution_text += f"\nСтатус: выполнена\nМеханик: {mechanic_name or 'N/A'}"
+        
+        # Формируем данные для KB
+        data = {
+            'title': f"Ремонт: {ticket.get('problem_description', 'Ремонт лифта')[:50]}",
+            'solution_text': solution_text,
+            'parts_used': {},
+            'category': 'ремонт',
+            'equipment_type': ticket.get('elevator_type', 'пассажирский')
+        }
+        
+        # Отправляем в KB
+        response = requests.post(
+            f"{KB_URL}/api/integration/ticket/{ticket['id']}/create-knowledge",
+            json=data,
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            if result.get('success'):
+                return True, result.get('article_id')
+        return False, None
+    except Exception as e:
+        print(f"❌ Ошибка сохранения в KB: {e}")
+        return False, None
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -374,7 +431,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def complete_ticket(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Завершение заявки после фотоотчета"""
+    """Завершение заявки - запрос деталей ремонта"""
     chat_id = update.effective_chat.id
     
     if chat_id not in user_data or 'ticket_id' not in user_data[chat_id]:
@@ -383,6 +440,30 @@ async def complete_ticket(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     ticket_id = user_data[chat_id]['ticket_id']
     ticket = db.get_ticket(ticket_id)
+    
+    # Запрашиваем описание выполненных работ
+    user_data[chat_id]['status'] = 'awaiting_work_details'
+    
+    await update.message.reply_text(
+        f"📝 Введите описание выполненных работ для заявки #{ticket['ticket_number']}:\n\n"
+        f"Проблема: {ticket.get('problem_description', 'N/A')[:100]}...\n\n"
+        "Что было сделано? (или нажмите /skip для пропуска)"
+    )
+
+
+async def handle_work_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка ввода деталей ремонта"""
+    chat_id = update.effective_chat.id
+    
+    if chat_id not in user_data or user_data[chat_id].get('status') != 'awaiting_work_details':
+        return
+    
+    work_details = update.message.text
+    ticket_id = user_data[chat_id]['ticket_id']
+    ticket = db.get_ticket(ticket_id)
+    
+    # Сохраняем детали
+    user_data[chat_id]['work_details'] = work_details
     
     # Проверяем, есть ли фото
     has_photos = False
@@ -394,9 +475,49 @@ async def complete_ticket(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Обновляем статус
     db.update_ticket_status(ticket_id, 'выполнена', 'telegram_bot')
     
+    # Сохраняем в базу знаний с деталями
+    kb_saved, article_id = save_to_knowledge_base(ticket, work_details=work_details)
+    kb_text = f"\n📚 Сохранено в базу знаний (статья #{article_id})" if kb_saved else ""
+    
     photo_text = " с фотоотчётом" if has_photos else ""
     await update.message.reply_text(
-        f"✅ Заявка #{ticket['ticket_number']} завершена{photo_text}!\n\n"
+        f"✅ Заявка #{ticket['ticket_number']} завершена{photo_text}!{kb_text}\n\n"
+        "Спасибо за работу! 💪"
+    )
+    
+    # Очищаем данные пользователя
+    del user_data[chat_id]
+
+
+async def skip_work_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Пропустить ввод деталей и завершить"""
+    chat_id = update.effective_chat.id
+    
+    if chat_id not in user_data or user_data[chat_id].get('status') != 'awaiting_work_details':
+        await update.message.reply_text("❌ Нет активной операции")
+        return
+    
+    ticket_id = user_data[chat_id]['ticket_id']
+    ticket = db.get_ticket(ticket_id)
+    work_details = user_data[chat_id].get('work_details', '')
+    
+    # Проверяем, есть ли фото
+    has_photos = False
+    with db.get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM ticket_photos WHERE ticket_id = ?", (ticket_id,))
+        has_photos = cursor.fetchone()[0] > 0
+    
+    # Обновляем статус
+    db.update_ticket_status(ticket_id, 'выполнена', 'telegram_bot')
+    
+    # Сохраняем в базу знаний
+    kb_saved, article_id = save_to_knowledge_base(ticket, work_details=work_details if work_details else None)
+    kb_text = f"\n📚 Сохранено в базу знаний (статья #{article_id})" if kb_saved else ""
+    
+    photo_text = " с фотоотчётом" if has_photos else ""
+    await update.message.reply_text(
+        f"✅ Заявка #{ticket['ticket_number']} завершена{photo_text}!{kb_text}\n\n"
         "Спасибо за работу! 💪"
     )
     
@@ -418,8 +539,12 @@ async def skip_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Обновляем статус
     db.update_ticket_status(ticket_id, 'выполнена', 'telegram_bot')
     
+    # Сохраняем в базу знаний
+    kb_saved, article_id = save_to_knowledge_base(ticket)
+    kb_text = f"\n📚 Сохранено в базу знаний (статья #{article_id})" if kb_saved else ""
+    
     await update.message.reply_text(
-        f"✅ Заявка #{ticket['ticket_number']} завершена!\n\n"
+        f"✅ Заявка #{ticket['ticket_number']} завершена!{kb_text}\n\n"
         "Спасибо за работу! 💪"
     )
     
@@ -714,10 +839,12 @@ def main():
     application.add_handler(CommandHandler("complete", complete_ticket))
     application.add_handler(CommandHandler("done", complete_ticket))
     application.add_handler(CommandHandler("skip", skip_photos))
+    application.add_handler(CommandHandler("skip_work", skip_work_details))
     application.add_handler(CommandHandler("my_lifts", my_lifts))
     application.add_handler(CommandHandler("my_tickets", my_tickets))
     application.add_handler(CallbackQueryHandler(handle_callback))
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_work_details))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_buttons))
     
     print("🤖 Telegram бот запущен!")
