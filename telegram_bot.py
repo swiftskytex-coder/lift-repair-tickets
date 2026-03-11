@@ -62,39 +62,39 @@ def save_to_knowledge_base(ticket, mechanic_name=None, work_details=None):
                 photo_path = row[0].replace('[ФОТО] ', '')
                 photos.append(photo_path)
         
-        # Получаем серийный номер лифта
+        # Получаем серийный номер и тип лифта
         serial_number = None
+        elevator_type = 'пассажирский'
         with db.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT serial_number FROM elevators WHERE elevator_id = ?",
+                "SELECT serial_number, elevator_type FROM elevators WHERE elevator_id = ?",
                 (ticket.get('elevator_id'),)
             )
             row = cursor.fetchone()
             if row:
                 serial_number = row[0]
+                elevator_type = row[1] or 'пассажирский'
         
-        # Формируем описание решения
-        solution_text = f"""Заявка #{ticket['ticket_number']}
-Адрес: {ticket['address']}
-Лифт ID: {ticket.get('elevator_id', 'N/A')}
-Серийный номер: {serial_number or 'N/A'}
-Проблема: {ticket.get('problem_description', 'N/A')}
-"""
-        if work_details:
-            solution_text += f"\nВыполненные работы:\n{work_details}\n"
+        # Формируем решение (что было сделано)
+        solution = work_details if work_details else 'Ремонт выполнен'
         
-        solution_text += f"\nСтатус: выполнена\nМеханик: {mechanic_name or 'N/A'}"
+        # Формируем симптомы (проблема)
+        symptoms = [ticket.get('problem_description', '')]
         
         # Формируем данные для KB
         data = {
-            'title': f"Ремонт: {ticket.get('problem_description', 'Ремонт лифта')[:50]}",
-            'solution_text': solution_text,
-            'parts_used': {},
+            'title': f"{ticket.get('problem_description', 'Ремонт лифта')[:50]}",
+            'content': ticket.get('problem_description', ''),
+            'symptoms': symptoms,
+            'solution': solution,
             'category': 'ремонт',
-            'equipment_type': ticket.get('elevator_type', 'пассажирский'),
+            'equipment_type': elevator_type,
             'serial_number': serial_number,
-            'photos': photos
+            'photos': photos,
+            'tags': [elevator_type, 'ремонт'],
+            'estimated_time': 60,
+            'difficulty_level': 3
         }
         
         # Отправляем в KB
@@ -108,6 +108,9 @@ def save_to_knowledge_base(ticket, mechanic_name=None, work_details=None):
             result = response.json()
             if result.get('success'):
                 return True, result.get('article_id')
+        return False, None
+    except Exception as e:
+        print(f"❌ Ошибка сохранения в KB: {e}")
         return False, None
     except Exception as e:
         print(f"❌ Ошибка сохранения в KB: {e}")
