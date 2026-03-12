@@ -456,26 +456,47 @@
                 </div>
                 {% endif %}
 
-                <!-- Фотографии -->
-                {% if photo_comments %}
+                <!-- Фото и описание работ - 2 колонки -->
+                {% if photo_comments or mechanic_work %}
                 <div class="detail-card">
-                    <div class="section-title">
-                        <i class="bi bi-camera" style="color: #f97316;"></i> Фотографии
-                    </div>
-                    <div class="row g-2">
-                        {% for photo in photo_comments %}
-                        <div class="col-6 col-md-4">
-                            <a href="{{ photo.text.replace('[ФОТО] ', '') }}" target="_blank">
-                                <img src="{{ photo.text.replace('[ФОТО] ', '') }}" 
-                                     class="img-fluid rounded" 
-                                     style="height: 120px; width: 100%; object-fit: cover; cursor: pointer;"
-                                     alt="Фото отчёт">
-                            </a>
-                            <div class="small text-muted mt-1">
-                                <i class="bi bi-clock"></i> {{ photo.created_at|samara_time if photo.created_at else '' }}
+                    <div class="row g-4">
+                        <!-- Левая колонка - Фотографии -->
+                        <div class="col-md-6">
+                            {% if photo_comments %}
+                            <div class="section-title">
+                                <i class="bi bi-camera" style="color: #f97316;"></i> Фотографии
                             </div>
+                            <div class="row g-2">
+                                {% for photo in photo_comments %}
+                                {% set photo_path = '/' + photo.text.replace('[ФОТО] ', '') %}
+                                <div class="col-6">
+                                    <a href="{{ photo_path }}" target="_blank">
+                                        <img src="{{ photo_path }}" 
+                                             class="img-fluid rounded" 
+                                             style="height: 120px; width: 100%; object-fit: cover; cursor: pointer;"
+                                             alt="Фото отчёт">
+                                    </a>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
                         </div>
-                        {% endfor %}
+                        
+                        <!-- Правая колонка - Описание работ -->
+                        <div class="col-md-6">
+                            {% if mechanic_work %}
+                            <div class="section-title">
+                                <i class="bi bi-tools" style="color: #10b981;"></i> Выполненные работы
+                            </div>
+                            <div class="text-start">
+                                {% for work in mechanic_work %}
+                                <div class="p-2 mb-2" style="background: #1f2937; border-radius: 8px;">
+                                    <div>{{ work.text.replace('📝 ', '') }}</div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
                     </div>
                 </div>
                 {% endif %}
@@ -629,6 +650,11 @@
                 icon.classList.add('bi-sun');
             }
         });
+        
+        // Автообновление страницы каждые 30 секунд
+        setInterval(() => {
+            location.reload();
+        }, 30000);
     </script>
 </body>
 </html>

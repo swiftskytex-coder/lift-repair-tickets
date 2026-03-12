@@ -474,16 +474,20 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if 'photo_count' not in user_data[chat_id]:
         user_data[chat_id]['photo_count'] = 0
     user_data[chat_id]['photo_count'] += 1
+    user_data[chat_id]['status'] = 'awaiting_photos_complete'
     
     photo_count = user_data[chat_id]['photo_count']
     
-    # Показываем подтверждение с кнопкой завершить
-    keyboard = [[InlineKeyboardButton("✅ Завершить", callback_data=f"quick_ready_{ticket_id}")]]
+    # Показываем подтверждение с кнопками
+    keyboard = [
+        [InlineKeyboardButton("📝 Добавить описание", callback_data=f"quick_desc_{ticket_id}")],
+        [InlineKeyboardButton("✅ Завершить", callback_data=f"quick_ready_{ticket_id}")]
+    ]
     
     await update.message.reply_text(
         f"📸 Фото #{photo_count} сохранено!\n\n"
-        "Можете отправить ещё фото или описание работ.\n"
-        "Нажмите 'Завершить' когда всё будет готово.",
+        "Нажмите 'Добавить описание' чтобы ввести текст работ,\n"
+        "или 'Завершить' чтобы закончить.",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
@@ -557,11 +561,11 @@ async def skip_work_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ticket = db.get_ticket(ticket_id)
     work_details = user_data[chat_id].get('work_details', '')
     
-    # Проверяем, есть ли фото
+    # Проверяем, есть ли фото через комментарии
     has_photos = False
     with db.get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM ticket_photos WHERE ticket_id = ?", (ticket_id,))
+        cursor.execute("SELECT COUNT(*) FROM comments WHERE ticket_id = ? AND text LIKE '[ФОТО] %'", (ticket_id,))
         has_photos = cursor.fetchone()[0] > 0
     
     # Обновляем статус

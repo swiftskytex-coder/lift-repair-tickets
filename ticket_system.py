@@ -30,7 +30,7 @@ def format_samara(dt):
         return dt.astimezone(SAMARA_TZ).strftime('%d.%m %H:%M')
     return ''
 
-app = Flask(__name__, template_folder='templates', static_folder='static')
+app = Flask(__name__, template_folder='templates', static_folder='uploads', static_url_path='/uploads')
 app.config['JSON_AS_cii'] = False
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 app.jinja_env.auto_reload = True
@@ -172,13 +172,14 @@ def index():
         except:
             pass
         
-        # Рассчитываем время от создания заявки
+        # Рассчитываем время в работе (для статуса "в работе" используем updated_at)
         in_work_duration = None
-        if ticket.get('created_at'):
+        if ticket.get('status') == 'в работе' and ticket.get('updated_at'):
             try:
-                created = datetime.strptime(ticket['created_at'][:19], '%Y-%m-%d %H:%M:%S')
-                now = datetime.now() - timedelta(hours=4)
-                diff = now - created
+                updated = datetime.fromisoformat(ticket['updated_at'].replace('Z', '+00:00'))
+                updated = updated + timedelta(hours=4)
+                now = datetime.now() + timedelta(hours=4)
+                diff = now - updated
                 hours = diff.total_seconds() // 3600
                 minutes = (diff.total_seconds() % 3600) // 60
                 if hours > 0:
@@ -187,6 +188,7 @@ def index():
                     in_work_duration = f"{int(minutes)}м"
                 ticket['in_work_duration'] = in_work_duration
             except:
+                pass
                 pass
         
         # Получаем список механиков для этого лифта
@@ -433,12 +435,12 @@ def ticket_detail(ticket_id):
     
     # Отделить фото от обычных комментариев
     photo_comments = []
-    regular_comments = []
+    mechanic_work = []
     for c in comments:
         if c.get('text', '').startswith('[ФОТО]'):
             photo_comments.append(c)
-        else:
-            regular_comments.append(c)
+        elif c.get('text', '').startswith('📝'):
+            mechanic_work.append(c)
     
     # Рассчитать время в работе
     in_work_duration = None
@@ -471,24 +473,72 @@ def ticket_detail(ticket_id):
     elif not history_data:
         history_data = []
     
-    for h in history_data:
+    # Обрабатываем историю - объединяем связанные события
+    processed_history = []
+    i = 0
+    while i < len(history_data):
+        h = history_data[i]
+        action = h.get('action', '')
+        
+        # Объединяем "Обновление заявки" + "Изменение статуса: новая → в работу" -> "Заявка в работе"
+        if action == 'Обновление заявки' and i + 1 < len(history_data):
+            next_h = history_data[i + 1]
+            next_action = next_h.get('action', '')
+            if 'Изменение статуса' in next_action and '→' in next_action:
+                # Объединяем в "Заявка в работе"
+                h = {
+                    'timestamp': h.get('timestamp', ''),
+                    'action': 'Заявка в работе',
+                    'user': h.get('user', '')
+                }
+                i += 2  # Пропускаем оба события
+            else:
+                i += 1
+        else:
+            i += 1
+        
+        processed_history.append(h)
+    
+    for h in processed_history:
         ts = h.get('timestamp', '')
         if ts:
             try:
-                dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+                if '.' in ts:
+                    dt = datetime.strptime(ts[:26], '%Y-%m-%dT%H:%M:%S.%f')
+                else:
+                    dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
                 ts_sort = dt.timestamp()
+                ts_display = dt.strftime('%Y-%m-%d %H:%M')
             except:
                 ts_sort = 0
+                ts_display = ts[:16]
         else:
             ts_sort = 0
+            ts_display = ''
+        
+        # Определяем иконку по типу события
+        action = h.get('action', '')
+        if 'в работе' in action:
+            icon = 'bi-wrench'
+            color = 'status-work'
+        elif 'выполнена' in action or 'завершена' in action:
+            icon = 'bi-check-circle'
+            color = 'status-done'
+        elif 'создание' in action.lower():
+            icon = 'bi-plus-circle'
+            color = 'status-new'
+        else:
+            icon = 'bi-arrow-repeat'
+            color = 'status-work'
+        
         timeline.append({
-            'timestamp': ts,
+            'timestamp': ts_display,
             'timestamp_sort': ts_sort,
             'type': 'status',
-            'action': h.get('action', ''),
+            'action': action,
             'user': h.get('user', ''),
-            'icon': 'bi-arrow-repeat',
-            'color': 'status-work'
+            'icon': icon,
+            'color': color
         })
     
     # 2. Отправка механикам
@@ -497,14 +547,17 @@ def ticket_detail(ticket_id):
             ts = mech['sent_at']
             try:
                 dt = datetime.strptime(ts[:19], '%Y-%m-%d %H:%M:%S')
+                dt = dt + timedelta(hours=4)  # Конвертируем local в UTC
                 ts_sort = dt.timestamp()
+                ts_display = dt.strftime('%Y-%m-%d %H:%M')
             except:
                 ts_sort = 0
+                ts_display = ts[:16]
             timeline.append({
-                'timestamp': ts,
+                'timestamp': ts_display,
                 'timestamp_sort': ts_sort,
                 'type': 'mechanic_sent',
-                'action': f'📤 Заявка отправлена {mech["name"]}',
+                'action': f'📤 Отправлена {mech["name"]}',
                 'user': 'system',
                 'icon': 'bi-send',
                 'color': 'status-sent'
@@ -513,11 +566,14 @@ def ticket_detail(ticket_id):
             ts = mech['responded_at']
             try:
                 dt = datetime.strptime(ts[:19], '%Y-%m-%d %H:%M:%S')
+                dt = dt + timedelta(hours=4)  # Конвертируем local в UTC
                 ts_sort = dt.timestamp()
+                ts_display = dt.strftime('%Y-%m-%d %H:%M')
             except:
                 ts_sort = 0
+                ts_display = ts[:16]
             timeline.append({
-                'timestamp': ts,
+                'timestamp': ts_display,
                 'timestamp_sort': ts_sort,
                 'type': 'mechanic_accepted',
                 'action': f'👤 {mech["name"]} принял заявку',
@@ -532,28 +588,36 @@ def ticket_detail(ticket_id):
         if ts:
             try:
                 dt = datetime.strptime(ts[:19], '%Y-%m-%d %H:%M:%S')
+                dt = dt + timedelta(hours=4)  # Конвертируем local в UTC
                 ts_sort = dt.timestamp()
+                ts_display = dt.strftime('%Y-%m-%d %H:%M')
             except:
                 ts_sort = 0
+                ts_display = ts[:16]
         else:
             ts_sort = 0
+            ts_display = ''
         timeline.append({
-            'timestamp': ts,
+            'timestamp': ts_display,
             'timestamp_sort': ts_sort,
             'type': 'photo',
             'action': '📸 Фотоотчёт',
             'user': p.get('author', ''),
             'icon': 'bi-camera',
             'color': 'status-photo',
-            'photo_path': p.get('text', '').replace('[ФОТО] ', '')
+            'photo_path': '/' + p.get('text', '').replace('[ФОТО] ', '')
         })
     
-    # Сортируем по времени (новые сверху)
-    timeline.sort(key=lambda x: x['timestamp_sort'], reverse=True)
+    # Сортируем по времени (старые сверху)
+    timeline.sort(key=lambda x: x['timestamp_sort'], reverse=False)
+    
+    # Timestamp уже в правильном формате для отображения
     
     return render_template('ticket_detail.html', 
                          ticket=ticket, 
                          comments=comments,
+                         photo_comments=photo_comments,
+                         mechanic_work=mechanic_work,
                          timeline=timeline,
                          in_work_duration=in_work_duration)
 
@@ -729,19 +793,98 @@ def api_tickets_html():
         # Статус класс
         ticket['status_class'] = 'status-new' if ticket.get('status') == 'новая' else 'status-in-work' if ticket.get('status') == 'в работе' else 'status-done'
         
-        # Время
-        try:
-            created = datetime.strptime(ticket['created_at'][:19], '%Y-%m-%d %H:%M:%S')
-            now = datetime.now() - timedelta(hours=4)
-            diff = now - created
-            hours = diff.total_seconds() // 3600
-            minutes = (diff.total_seconds() % 3600) // 60
-            if hours > 0:
-                ticket['in_work_duration'] = f"{int(hours)}ч {int(minutes)}м"
-            else:
-                ticket['in_work_duration'] = f"{int(minutes)}м"
-        except:
-            pass
+        # Время в работе
+        if ticket.get('status') == 'в работе' and ticket.get('updated_at'):
+            try:
+                updated = datetime.fromisoformat(ticket['updated_at'].replace('Z', '+00:00'))
+                updated = updated + timedelta(hours=4)
+                now = datetime.now() + timedelta(hours=4)
+                diff = now - updated
+                hours = diff.total_seconds() // 3600
+                minutes = (diff.total_seconds() % 3600) // 60
+                if hours > 0:
+                    ticket['in_work_duration'] = f"{int(hours)}ч {int(minutes)}м"
+                else:
+                    ticket['in_work_duration'] = f"{int(minutes)}м"
+            except:
+                pass
+        
+        # Загружаем механиков для каждой заявки
+        from datetime import date
+        today = date.today().strftime('%Y-%m-%d')
+        
+        for ticket in recent_tickets:
+            mechanics_list = []
+            elevator_id = ticket.get('elevator_id')
+            
+            try:
+                # Получаем механиков для лифта
+                if elevator_id:
+                    elevator_mechanics = db.get_mechanics_for_elevator(elevator_id)
+                else:
+                    elevator_mechanics = []
+                
+                # Получаем дежурного
+                oncall_today = db.get_oncall_mechanic_for_date(today)
+                if not oncall_today:
+                    oncall_today = db.get_next_oncall_mechanic()
+                oncall_today_id = oncall_today['id'] if oncall_today else None
+                
+                assigned_id = ticket.get('assigned_to')
+                
+                # Добавляем механиков с лифта
+                for mech in elevator_mechanics:
+                    is_oncall = bool(oncall_today_id and mech['id'] == oncall_today_id)
+                    mech_info = {
+                        'name': mech['name'],
+                        'id': mech.get('id'),
+                        'has_telegram': bool(mech.get('telegram_chat_id')),
+                        'is_oncall': is_oncall,
+                        'status': 'Принял' if assigned_id and str(assigned_id) == str(mech['id']) else ('Аварийный' if is_oncall else 'Линейный'),
+                        'tg_status': 'accepted' if assigned_id and str(assigned_id) == str(mech['id']) else None
+                    }
+                    if not any(m['id'] == mech['id'] for m in mechanics_list):
+                        mechanics_list.append(mech_info)
+                
+                # Добавляем дежурного если не добавлен
+                if oncall_today and oncall_today_id:
+                    if not any(m['id'] == oncall_today_id for m in mechanics_list):
+                        mechanics_list.append({
+                            'name': oncall_today['name'],
+                            'id': oncall_today.get('id'),
+                            'has_telegram': bool(oncall_today.get('telegram_chat_id')),
+                            'is_oncall': True,
+                            'status': 'Аварийный',
+                            'tg_status': None
+                        })
+                
+                # Если есть assigned_to - обновляем статус существующего механика
+                if assigned_id:
+                    for m in mechanics_list:
+                        if m.get('id') and str(m['id']) == str(assigned_id):
+                            m['status'] = 'Принял'
+                            m['tg_status'] = 'accepted'
+                            break
+                    else:
+                        # Механик не в списке - добавляем
+                        try:
+                            assigned_mechanic = db.get_mechanic(assigned_id)
+                            if assigned_mechanic:
+                                mechanics_list.append({
+                                    'name': assigned_mechanic['name'],
+                                    'id': assigned_mechanic.get('id'),
+                                    'has_telegram': bool(assigned_mechanic.get('telegram_chat_id')),
+                                    'is_oncall': False,
+                                    'status': 'Принял',
+                                    'tg_status': 'accepted'
+                                })
+                        except:
+                            pass
+                
+                ticket['mechanics_list'] = mechanics_list
+            except Exception as e:
+                print(f"Error loading mechanics: {e}")
+                ticket['mechanics_list'] = []
     
     return render_template('tickets_list_partial.html', tickets=recent_tickets)
 
@@ -1045,7 +1188,7 @@ def api_docs():
     """Документация API"""
     docs = {
         'name': 'Lift Repair Ticket System API',
-        'version': '1.0.0',
+        'version': '2.1',
         'endpoints': {
             'GET /api/tickets': 'Получить список заявок',
             'POST /api/tickets': 'Создать новую заявку',
