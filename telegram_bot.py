@@ -185,16 +185,19 @@ async def send_ticket_to_mechanic(ticket_id, mechanic_chat_id):
     
     message = f"🚨 НОВАЯ ЗАЯВКА\n"
     message += f"⏰ {created_at_formatted}\n\n"
-    message += f"📍 Адрес: {ticket['address']}\n"
     
-    if elevator:
-        message += f"🛗 Лифт: {elevator['elevator_id']}\n"
-        if elevator.get('entrance'):
-            message += f"🏢 Подъезд: {elevator['entrance']}\n"
+    # Адрес без подъезда
+    address_clean = ticket['address']
+    for prefix in ['подъезд ', 'Подъезд ', 'п. ', 'П. ']:
+        if prefix in address_clean.lower():
+            address_clean = address_clean.split(prefix)[0].rstrip()
+    message += f"📍 Адрес: {address_clean}\n"
     
-    message += f"⚠️ Приоритет: {ticket['priority']}\n"
-    message += f"📝 Проблема:\n{ticket['problem_description']}\n\n"
-    message += f"⏰ Создана: {ticket['created_at'][:16]}"
+    # Подъезд и тип
+    if elevator and elevator.get('entrance'):
+        message += f"Подъезд: {elevator['entrance']} {elevator.get('elevator_type', 'лифт')}\n"
+    
+    message += f"📝 Проблема:\n{ticket['problem_description']}\n"
     
     # Кнопки действий
     keyboard = [
@@ -243,11 +246,35 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db.accept_ticket(ticket_id, mechanic['id'])
         db.add_comment(ticket_id, 'system', f"👤 Механик {name} принял заявку в работу")
         
-        await query.edit_message_text(
-            query.message.text + "\n\n✅ ЗАЯВКА ПРИНЯТА В РАБОТУ"
-        )
+        # Формируем сообщение с кнопками
+        ticket = db.get_ticket(ticket_id)
         
-        # Сохраняем ID заявки для приема фото
+        # Адрес без подъезда
+        address_clean = ticket['address']
+        for prefix in ['подъезд ', 'Подъезд ', 'п. ', 'П. ']:
+            if prefix in address_clean.lower():
+                address_clean = address_clean.split(prefix)[0].rstrip()
+        
+        # Подъезд и тип
+        elevator = db.get_elevator(ticket.get('elevator_id'))
+        elevator_info = ""
+        if elevator and elevator.get('entrance'):
+            elevator_info = f"Подъезд: {elevator['entrance']} {elevator.get('elevator_type', 'лифт')}\n"
+        
+        message = f"✅ ЗАЯВКА ПРИНЯТА В РАБОТУ\n\n"
+        message += f"📍 Адрес: {address_clean}\n"
+        message += elevator_info
+        message += f"📝 Проблема: {ticket['problem_description']}\n\n"
+        message += "📸 Отправьте фото выполненной работы и использованных запчастей\n"
+        message += "📝 Опишите, что было сделано?\n"
+        
+        keyboard = [
+            [InlineKeyboardButton("✅ Завершить", callback_data=f"quick_ready_{ticket_id}")]
+        ]
+        
+        await query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(keyboard))
+        
+        # Сохраняем ID заявки для приёма фото и описания
         user_data[chat_id] = {'ticket_id': ticket_id, 'status': 'awaiting_photos'}
     
     elif data.startswith("reject_"):
@@ -358,12 +385,37 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"Заявка #{ticket['ticket_number']}"
             )
         elif action == "ready":
-            # Сразу завершаем заявку
+            # Завершаем заявку и сохраняем в базу знаний
+            work_details = user_data.get(chat_id, {}).get('work_details', '')
+            
+            # Обновляем статус
             db.update_ticket_status(ticket_id, 'выполнена', 'telegram_bot')
+            
+            # Сохраняем в базу знаний
+            kb_saved, article_id = save_to_knowledge_base(ticket, work_details=work_details if work_details else None)
+            
+            address = ticket['address'].replace('подъезд', 'п').replace('Подъезд', 'П')
+            months = ['', 'января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря']
+            try:
+                dt = datetime.fromisoformat(ticket['created_at'].replace('Z', '+00:00'))
+                dt = dt + timedelta(hours=4)
+                created = f"{dt.day} {months[dt.month]} {dt.hour:02d}:{dt.minute:02d}"
+            except:
+                created = ticket['created_at'][:16].replace('T', ' ')
+            
+            kb_msg = f"\n📚 Сохранено в базу знаний (статья #{article_id})" if kb_saved else ""
+            
             await query.edit_message_text(
-                f"✅ Заявка #{ticket['ticket_number']} завершена!\n\n"
+                f"✅ Завершена!{kb_msg}\n\n"
+                f"📍 {address}\n"
+                f"⏰ {created}\n\n"
+                "📚 Фото и отчет сохранены для анализа и помощи в будущих ремонтах.\n\n"
                 "Спасибо за работу! 💪"
             )
+            
+            # Очищаем данные
+            if chat_id in user_data:
+                del user_data[chat_id]
         
         elif action == "photo":
             # Запрашиваем фотоотчёт
@@ -371,6 +423,17 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data=f"ticket_{ticket_id}")]]
             await query.edit_message_text(
                 "📸 Отправьте фото выполненной работы",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        
+        elif action == "desc":
+            # Запрашиваем описание ремонта
+            user_data[chat_id] = {'ticket_id': ticket_id, 'status': 'awaiting_work_details'}
+            keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data=f"ticket_{ticket_id}")]]
+            await query.edit_message_text(
+                f"📝 Введите описание выполненных работ для заявки #{ticket['ticket_number']}:\n\n"
+                f"Проблема: {ticket.get('problem_description', 'N/A')[:100]}...\n\n"
+                "Что было сделано?",
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
 
@@ -407,43 +470,20 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Сохраняем путь в БД вместо file_id
     db.add_comment(ticket_id, 'mechanic', f'[ФОТО] {file_path}')
     
-    ticket = db.get_ticket(ticket_id)
+    # Увеличиваем счётчик фото
+    if 'photo_count' not in user_data[chat_id]:
+        user_data[chat_id]['photo_count'] = 0
+    user_data[chat_id]['photo_count'] += 1
     
-    # Формируем детали заявки
-    address = ticket['address'].replace('подъезд', 'п').replace('Подъезд', 'П').replace(' п.', 'п').replace(' П.', 'П').replace(' ', '').replace('ул.', 'ул.').replace('39', ' 39')
+    photo_count = user_data[chat_id]['photo_count']
     
-    try:
-        dt = datetime.fromisoformat(ticket['created_at'].replace('Z', '+00:00'))
-        dt = dt + timedelta(hours=4)
-        months = ['', 'января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря']
-        created_at_formatted = f"{dt.day} {months[dt.month]} {dt.year} {dt.hour:02d}:{dt.minute:02d}"
-    except:
-        created_at_formatted = ticket['created_at'][:16].replace('T', ' ')
-    
-    message = f"🚨 Заявка #{ticket['ticket_number']}\n"
-    message += f"⏰ {created_at_formatted}\n\n"
-    message += f"📍 {address}\n"
-    message += f"⚠️ Приоритет: {ticket['priority']}\n"
-    message += f"📊 Статус: {ticket['status']}\n"
-    
-    if ticket.get('problem_description'):
-        message += f"\n📝 Проблема:\n{ticket['problem_description']}\n"
-    
-    # Кнопки
-    keyboard = []
-    if ticket['status'] == 'в работе':
-        keyboard.append([
-            InlineKeyboardButton("🚗 В пути", callback_data=f"quick_onway_{ticket_id}"),
-            InlineKeyboardButton("🔧 Нужны запчасти", callback_data=f"quick_parts_{ticket_id}")
-        ])
-        keyboard.append([InlineKeyboardButton("✅ Готов", callback_data=f"quick_ready_{ticket_id}")])
-        keyboard.append([InlineKeyboardButton("📸 Отправить фото", callback_data=f"quick_photo_{ticket_id}")])
-    
-    keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back_my_tickets")])
+    # Показываем подтверждение с кнопкой завершить
+    keyboard = [[InlineKeyboardButton("✅ Завершить", callback_data=f"quick_ready_{ticket_id}")]]
     
     await update.message.reply_text(
-        f"📸 Фото сохранено!\n\n"
-        "Выберите действие:",
+        f"📸 Фото #{photo_count} сохранено!\n\n"
+        "Можете отправить ещё фото или описание работ.\n"
+        "Нажмите 'Завершить' когда всё будет готово.",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
@@ -476,35 +516,33 @@ async def handle_work_details(update: Update, context: ContextTypes.DEFAULT_TYPE
     if chat_id not in user_data or user_data[chat_id].get('status') != 'awaiting_work_details':
         return
     
-    work_details = update.message.text
+    new_text = update.message.text
     ticket_id = user_data[chat_id]['ticket_id']
-    ticket = db.get_ticket(ticket_id)
     
-    # Сохраняем детали
-    user_data[chat_id]['work_details'] = work_details
+    # Накапливаем описание работ
+    if 'work_details' not in user_data[chat_id]:
+        user_data[chat_id]['work_details'] = ""
     
-    # Проверяем, есть ли фото
-    has_photos = False
-    with db.get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM ticket_photos WHERE ticket_id = ?", (ticket_id,))
-        has_photos = cursor.fetchone()[0] > 0
+    if user_data[chat_id]['work_details']:
+        user_data[chat_id]['work_details'] += "\n" + new_text
+    else:
+        user_data[chat_id]['work_details'] = new_text
     
-    # Обновляем статус
-    db.update_ticket_status(ticket_id, 'выполнена', 'telegram_bot')
+    # Сохраняем в БД как комментарий
+    db.add_comment(ticket_id, 'mechanic', f'📝 {new_text}')
     
-    # Сохраняем в базу знаний с деталями
-    kb_saved, article_id = save_to_knowledge_base(ticket, work_details=work_details)
-    kb_text = f"\n📚 Сохранено в базу знаний (статья #{article_id})" if kb_saved else ""
+    work_details = user_data[chat_id]['work_details']
+    lines = work_details.count('\n') + 1
     
-    photo_text = " с фотоотчётом" if has_photos else ""
+    # Показываем подтверждение с кнопкой завершить
+    keyboard = [[InlineKeyboardButton("✅ Завершить", callback_data=f"quick_ready_{ticket_id}")]]
+    
     await update.message.reply_text(
-        f"✅ Заявка #{ticket['ticket_number']} завершена{photo_text}!{kb_text}\n\n"
-        "Спасибо за работу! 💪"
+        f"📝 Сохранено! (часть {lines})\n\n"
+        "Можете отправить ещё фото или описание.\n"
+        "Нажмите 'Завершить' когда всё будет готово.",
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
-    
-    # Очищаем данные пользователя
-    del user_data[chat_id]
 
 
 async def skip_work_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -531,11 +569,22 @@ async def skip_work_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Сохраняем в базу знаний
     kb_saved, article_id = save_to_knowledge_base(ticket, work_details=work_details if work_details else None)
-    kb_text = f"\n📚 Сохранено в базу знаний (статья #{article_id})" if kb_saved else ""
+    
+    address = ticket['address'].replace('подъезд', 'п').replace('Подъезд', 'П')
+    months = ['', 'января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря']
+    try:
+        dt = datetime.fromisoformat(ticket['created_at'].replace('Z', '+00:00'))
+        dt = dt + timedelta(hours=4)
+        created = f"{dt.day} {months[dt.month]} {dt.hour:02d}:{dt.minute:02d}"
+    except:
+        created = ticket['created_at'][:16].replace('T', ' ')
     
     photo_text = " с фотоотчётом" if has_photos else ""
     await update.message.reply_text(
-        f"✅ Заявка #{ticket['ticket_number']} завершена{photo_text}!{kb_text}\n\n"
+        f"✅ Завершена!{photo_text}\n\n"
+        f"📍 {address}\n"
+        f"⏰ {created}\n\n"
+        "📚 Фото и отчет будут сохранены в базу знаний для анализа и помощи в будущих ремонтах.\n\n"
         "Спасибо за работу! 💪"
     )
     
@@ -559,10 +608,21 @@ async def skip_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Сохраняем в базу знаний
     kb_saved, article_id = save_to_knowledge_base(ticket)
-    kb_text = f"\n📚 Сохранено в базу знаний (статья #{article_id})" if kb_saved else ""
+    
+    address = ticket['address'].replace('подъезд', 'п').replace('Подъезд', 'П')
+    months = ['', 'января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря']
+    try:
+        dt = datetime.fromisoformat(ticket['created_at'].replace('Z', '+00:00'))
+        dt = dt + timedelta(hours=4)
+        created = f"{dt.day} {months[dt.month]} {dt.hour:02d}:{dt.minute:02d}"
+    except:
+        created = ticket['created_at'][:16].replace('T', ' ')
     
     await update.message.reply_text(
-        f"✅ Заявка #{ticket['ticket_number']} завершена!{kb_text}\n\n"
+        f"✅ Завершена!\n\n"
+        f"📍 {address}\n"
+        f"⏰ {created}\n\n"
+        "📚 Фото и отчет будут сохранены в базу знаний для анализа и помощи в будущих ремонтах.\n\n"
         "Спасибо за работу! 💪"
     )
     
@@ -800,13 +860,14 @@ async def show_ticket_details(update, context):
         keyboard.append([InlineKeyboardButton("✅ Принять", callback_data=f"accept_{ticket_id}")])
     elif ticket['status'] == 'в работе':
         keyboard.append([
-            InlineKeyboardButton("🚗 В пути", callback_data=f"quick_onway_{ticket_id}"),
-            InlineKeyboardButton("🔧 Нужны запчасти", callback_data=f"quick_parts_{ticket_id}")
+            InlineKeyboardButton("📸 Добавить фото", callback_data=f"quick_photo_{ticket_id}"),
+            InlineKeyboardButton("📝 Описание ремонта", callback_data=f"quick_desc_{ticket_id}")
         ])
-        keyboard.append([InlineKeyboardButton("✅ Готов", callback_data=f"quick_ready_{ticket_id}")])
-        keyboard.append([InlineKeyboardButton("📸 Отправить фото", callback_data=f"quick_photo_{ticket_id}")])
-    
-    keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back_my_tickets")])
+        keyboard.append([
+            InlineKeyboardButton("🚗 В пути", callback_data=f"quick_onway_{ticket_id}"),
+            InlineKeyboardButton("🔧 Запчасти", callback_data=f"quick_parts_{ticket_id}")
+        ])
+        keyboard.append([InlineKeyboardButton("✅ Завершить", callback_data=f"quick_ready_{ticket_id}")])
     
     await query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(keyboard))
 
@@ -822,9 +883,15 @@ async def handle_text_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE
     chat_id = update.effective_chat.id
     
     # Если ожидаем ввод деталей ремонта - обрабатываем отдельно
-    if chat_id in user_data and user_data[chat_id].get('status') == 'awaiting_work_details':
-        await handle_work_details(update, context)
-        return
+    if chat_id in user_data:
+        status = user_data[chat_id].get('status')
+        if status == 'awaiting_work_details':
+            await handle_work_details(update, context)
+            return
+        elif status == 'awaiting_photos':
+            # После фото - текст считается описанием работы
+            await handle_work_details(update, context)
+            return
     
     if text == "🛗 Мои лифты":
         await my_lifts(update, context)
