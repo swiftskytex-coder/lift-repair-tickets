@@ -421,7 +421,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Запрашиваем фотоотчёт - сохраняем существующие данные
             if chat_id not in user_data:
                 user_data[chat_id] = {}
-            user_data[chat_id]['ticket_id'] = ticket_id
+            # Сохраняем существующие данные
+            if 'ticket_id' not in user_data[chat_id]:
+                user_data[chat_id]['ticket_id'] = ticket_id
             user_data[chat_id]['status'] = 'awaiting_photos'
             keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data=f"ticket_{ticket_id}")]]
             await query.edit_message_text(
@@ -433,7 +435,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Запрашиваем описание ремонта - сохраняем существующие данные
             if chat_id not in user_data:
                 user_data[chat_id] = {}
-            user_data[chat_id]['ticket_id'] = ticket_id
+            # Сохраняем существующие данные
+            if 'ticket_id' not in user_data[chat_id]:
+                user_data[chat_id]['ticket_id'] = ticket_id
             user_data[chat_id]['status'] = 'awaiting_work_details'
             keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data=f"ticket_{ticket_id}")]]
             await query.edit_message_text(
@@ -486,14 +490,15 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Показываем подтверждение с кнопками
     keyboard = [
-        [InlineKeyboardButton("📸 Добавить фото", callback_data=f"quick_photo_{ticket_id}")],
+        [InlineKeyboardButton("📸 Ещё фото", callback_data=f"quick_photo_{ticket_id}")],
+        [InlineKeyboardButton("📝 Добавить описание", callback_data=f"quick_desc_{ticket_id}")],
         [InlineKeyboardButton("✅ Завершить", callback_data=f"quick_ready_{ticket_id}")]
     ]
     
     await update.message.reply_text(
         f"📸 Фото #{photo_count} сохранено!\n\n"
-        "Нажмите 'Добавить фото' чтобы отправить ещё,\n"
-        "или 'Завершить' чтобы закончить.",
+        "Можете добавить ещё фото или описание работ.\n"
+        "Нажмите 'Завершить' когда всё будет готово.",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
@@ -576,12 +581,15 @@ async def complete_ticket(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_work_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка ввода деталей ремонта"""
     chat_id = update.effective_chat.id
+    print(f"DEBUG handle_work_details: chat_id={chat_id}, user_data={user_data.get(chat_id)}")
     
     if chat_id not in user_data or user_data[chat_id].get('status') != 'awaiting_work_details':
+        print(f"DEBUG: status not awaiting_work_details, got: {user_data.get(chat_id, {}).get('status')}")
         return
     
     new_text = update.message.text
     ticket_id = user_data[chat_id]['ticket_id']
+    print(f"DEBUG: saving text for ticket {ticket_id}: {new_text[:30]}")
     
     # Накапливаем описание работ
     if 'work_details' not in user_data[chat_id]:

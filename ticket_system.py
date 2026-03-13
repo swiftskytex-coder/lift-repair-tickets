@@ -611,6 +611,34 @@ def ticket_detail(ticket_id):
             'photo_path': '/' + p.get('text', '').replace('[ФОТО] ', '')
         })
     
+    # 4. Текстовые описания работ
+    for w in mechanic_work:
+        ts = w.get('created_at', '')
+        if ts:
+            try:
+                dt = datetime.strptime(ts[:19], '%Y-%m-%d %H:%M:%S')
+                dt = dt + timedelta(hours=4)  # Конвертируем local в UTC
+                ts_sort = dt.timestamp()
+                ts_display = dt.strftime('%Y-%m-%d %H:%M')
+            except:
+                ts_sort = 0
+                ts_display = ts[:16]
+        else:
+            ts_sort = 0
+            ts_display = ''
+        # Обрезаем текст для отображения
+        text = w.get('text', '').replace('📝 ', '')
+        text_display = text[:50] + '...' if len(text) > 50 else text
+        timeline.append({
+            'timestamp': ts_display,
+            'timestamp_sort': ts_sort,
+            'type': 'work',
+            'action': f'📝 {text_display}',
+            'user': w.get('author', ''),
+            'icon': 'bi-tools',
+            'color': 'status-work'
+        })
+    
     # Сортируем по времени (старые сверху)
     timeline.sort(key=lambda x: x['timestamp_sort'], reverse=False)
     
@@ -1192,7 +1220,7 @@ def api_docs():
     """Документация API"""
     docs = {
         'name': 'Lift Repair Ticket System API',
-        'version': '2.1',
+        'version': '2.2',
         'endpoints': {
             'GET /api/tickets': 'Получить список заявок',
             'POST /api/tickets': 'Создать новую заявку',
