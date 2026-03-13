@@ -418,8 +418,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 del user_data[chat_id]
         
         elif action == "photo":
-            # Запрашиваем фотоотчёт
-            user_data[chat_id] = {'ticket_id': ticket_id, 'status': 'awaiting_photos'}
+            # Запрашиваем фотоотчёт - сохраняем существующие данные
+            if chat_id not in user_data:
+                user_data[chat_id] = {}
+            user_data[chat_id]['ticket_id'] = ticket_id
+            user_data[chat_id]['status'] = 'awaiting_photos'
             keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data=f"ticket_{ticket_id}")]]
             await query.edit_message_text(
                 "📸 Отправьте фото выполненной работы",
@@ -427,8 +430,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         
         elif action == "desc":
-            # Запрашиваем описание ремонта
-            user_data[chat_id] = {'ticket_id': ticket_id, 'status': 'awaiting_work_details'}
+            # Запрашиваем описание ремонта - сохраняем существующие данные
+            if chat_id not in user_data:
+                user_data[chat_id] = {}
+            user_data[chat_id]['ticket_id'] = ticket_id
+            user_data[chat_id]['status'] = 'awaiting_work_details'
             keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data=f"ticket_{ticket_id}")]]
             await query.edit_message_text(
                 f"📝 Введите описание выполненных работ для заявки #{ticket['ticket_number']}:\n\n"
@@ -460,8 +466,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ticket_dir = f"uploads/ticket_{ticket_id}"
     os.makedirs(ticket_dir, exist_ok=True)
     
-    # Генерируем имя файла: before_17022026_1234.jpg или after_...
-    timestamp = datetime.now().strftime("%d%m%Y_%H%M")
+    # Генерируем имя файла: photo_12032026_194430.jpg (с секундами)
+    timestamp = datetime.now().strftime("%d%m%Y_%H%M%S")
     file_path = f"{ticket_dir}/photo_{timestamp}.jpg"
     
     # Скачиваем
@@ -480,13 +486,67 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Показываем подтверждение с кнопками
     keyboard = [
-        [InlineKeyboardButton("📝 Добавить описание", callback_data=f"quick_desc_{ticket_id}")],
+        [InlineKeyboardButton("📸 Добавить фото", callback_data=f"quick_photo_{ticket_id}")],
         [InlineKeyboardButton("✅ Завершить", callback_data=f"quick_ready_{ticket_id}")]
     ]
     
     await update.message.reply_text(
         f"📸 Фото #{photo_count} сохранено!\n\n"
-        "Нажмите 'Добавить описание' чтобы ввести текст работ,\n"
+        "Нажмите 'Добавить фото' чтобы отправить ещё,\n"
+        "или 'Завершить' чтобы закончить.",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка видео от механика"""
+    chat_id = update.effective_chat.id
+    
+    if chat_id not in user_data or user_data[chat_id].get('status') not in ['awaiting_photos', 'awaiting_photos_complete']:
+        await update.message.reply_text("ℹ️ Отправьте /start для регистрации")
+        return
+    
+    ticket_id = user_data[chat_id]['ticket_id']
+    
+    # Получаем видео
+    video = update.message.video
+    file_id = video.file_id
+    
+    # Скачиваем видео
+    bot = Bot(token=BOT_TOKEN)
+    file = await bot.get_file(file_id)
+    
+    # Создаем папку для заявки
+    ticket_dir = f"uploads/ticket_{ticket_id}"
+    os.makedirs(ticket_dir, exist_ok=True)
+    
+    # Генерируем имя файла с секундами
+    timestamp = datetime.now().strftime("%d%m%Y_%H%M%S")
+    file_path = f"{ticket_dir}/video_{timestamp}.mp4"
+    
+    # Скачиваем
+    await file.download_to_drive(file_path)
+    
+    # Сохраняем путь в БД
+    db.add_comment(ticket_id, 'mechanic', f'[ВИДЕО] {file_path}')
+    
+    # Увеличиваем счётчик
+    if 'video_count' not in user_data[chat_id]:
+        user_data[chat_id]['video_count'] = 0
+    user_data[chat_id]['video_count'] += 1
+    user_data[chat_id]['status'] = 'awaiting_photos_complete'
+    
+    video_count = user_data[chat_id]['video_count']
+    
+    # Показываем подтверждение
+    keyboard = [
+        [InlineKeyboardButton("📸 Добавить фото", callback_data=f"quick_photo_{ticket_id}")],
+        [InlineKeyboardButton("✅ Завершить", callback_data=f"quick_ready_{ticket_id}")]
+    ]
+    
+    await update.message.reply_text(
+        f"🎥 Видео #{video_count} сохранено!\n\n"
+        "Нажмите 'Добавить фото' чтобы добавить фото,\n"
         "или 'Завершить' чтобы закончить.",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
@@ -538,12 +598,16 @@ async def handle_work_details(update: Update, context: ContextTypes.DEFAULT_TYPE
     work_details = user_data[chat_id]['work_details']
     lines = work_details.count('\n') + 1
     
-    # Показываем подтверждение с кнопкой завершить
-    keyboard = [[InlineKeyboardButton("✅ Завершить", callback_data=f"quick_ready_{ticket_id}")]]
+    # Показываем подтверждение с кнопками
+    keyboard = [
+        [InlineKeyboardButton("📸 Ещё фото", callback_data=f"quick_photo_{ticket_id}")],
+        [InlineKeyboardButton("📝 Ещё описание", callback_data=f"quick_desc_{ticket_id}")],
+        [InlineKeyboardButton("✅ Завершить", callback_data=f"quick_ready_{ticket_id}")]
+    ]
     
     await update.message.reply_text(
         f"📝 Сохранено! (часть {lines})\n\n"
-        "Можете отправить ещё фото или описание.\n"
+        "Можете добавить ещё фото или описание.\n"
         "Нажмите 'Завершить' когда всё будет готово.",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
@@ -892,7 +956,7 @@ async def handle_text_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE
         if status == 'awaiting_work_details':
             await handle_work_details(update, context)
             return
-        elif status == 'awaiting_photos':
+        elif status in ['awaiting_photos', 'awaiting_photos_complete']:
             # После фото - текст считается описанием работы
             await handle_work_details(update, context)
             return
@@ -945,6 +1009,7 @@ def main():
     application.add_handler(CommandHandler("my_tickets", my_tickets))
     application.add_handler(CallbackQueryHandler(handle_callback))
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    application.add_handler(MessageHandler(filters.VIDEO, handle_video))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_buttons))
     
     print("🤖 Telegram бот запущен!")

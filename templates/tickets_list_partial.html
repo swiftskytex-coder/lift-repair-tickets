@@ -4,8 +4,8 @@
      data-status="{{ ticket.status }}"
      onclick="window.location.href='/ticket/{{ ticket.id }}'">
     <div class="row g-2">
-        <!-- Левая колонка - заявка -->
-        <div class="col-7">
+        <!-- Заявка -->
+        <div class="col-12">
             <div class="d-flex align-items-center gap-2">
                 {% if ticket.entrance %}
                 <span class="badge bg-secondary" style="font-size: 11px;">{{ ticket.entrance }}</span>
@@ -34,16 +34,6 @@
                 </span>
                 {% endfor %}
                 {% endif %}
-            </div>
-            {% endif %}
-        </div>
-        <!-- Правая колонка - история -->
-        <div class="col-5 text-end">
-            {% if ticket.ticket_log %}
-            <div class="ticket-log text-end">
-                {% for log in ticket.ticket_log %}
-                <div class="small text-muted">{{ log }}</div>
-                {% endfor %}
             </div>
             {% endif %}
         </div>

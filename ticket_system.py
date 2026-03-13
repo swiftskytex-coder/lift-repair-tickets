@@ -433,12 +433,15 @@ def ticket_detail(ticket_id):
                 'responded_at': row[4]
             })
     
-    # Отделить фото от обычных комментариев
+    # Отделить фото и видео от обычных комментариев
     photo_comments = []
+    video_comments = []
     mechanic_work = []
     for c in comments:
         if c.get('text', '').startswith('[ФОТО]'):
             photo_comments.append(c)
+        elif c.get('text', '').startswith('[ВИДЕО]'):
+            video_comments.append(c)
         elif c.get('text', '').startswith('📝'):
             mechanic_work.append(c)
     
@@ -617,6 +620,7 @@ def ticket_detail(ticket_id):
                          ticket=ticket, 
                          comments=comments,
                          photo_comments=photo_comments,
+                         video_comments=video_comments,
                          mechanic_work=mechanic_work,
                          timeline=timeline,
                          in_work_duration=in_work_duration)
