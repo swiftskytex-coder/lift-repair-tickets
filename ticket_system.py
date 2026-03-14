@@ -1220,7 +1220,7 @@ def api_docs():
     """Документация API"""
     docs = {
         'name': 'Lift Repair Ticket System API',
-        'version': '2.2',
+        'version': '2.3',
         'endpoints': {
             'GET /api/tickets': 'Получить список заявок',
             'POST /api/tickets': 'Создать новую заявку',
@@ -1719,12 +1719,16 @@ def api_restore_backup():
 # ═══════════════════════════════════════════════════════════════
 
 if __name__ == '__main__':
+    from notification_service import start_scheduler
+    start_scheduler()
+    
     print("=" * 60)
     print("🛠️  Система заявок на ремонт лифтов")
     print("=" * 60)
     print("📞 Веб-интерфейс оператора: http://localhost:8081")
     print("📚 API документация: http://localhost:8081/api/docs")
     print("🏥 Health check: http://localhost:8081/api/health")
+    print("⏰ Утренняя рассылка: 8:00 (пн-пт)")
     print("=" * 60)
     
     app.run(

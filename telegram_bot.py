@@ -44,7 +44,7 @@ BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
 user_data = {}
 
 # URL базы знаний
-KB_URL = os.getenv('KNOWLEDGE_BASE_URL', 'http://localhost:8082')
+KB_URL = os.getenv('KNOWLEDGE_BASE_URL', 'http://knowledge.lift-system.crazedns.ru')
 
 
 def save_to_knowledge_base(ticket, mechanic_name=None, work_details=None):
@@ -52,6 +52,7 @@ def save_to_knowledge_base(ticket, mechanic_name=None, work_details=None):
     try:
         # Собираем фото
         photos = []
+        videos = []
         with db.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -61,6 +62,15 @@ def save_to_knowledge_base(ticket, mechanic_name=None, work_details=None):
             for row in cursor.fetchall():
                 photo_path = row[0].replace('[ФОТО] ', '')
                 photos.append(photo_path)
+            
+            # Собираем видео
+            cursor.execute(
+                "SELECT text FROM comments WHERE ticket_id = ? AND author = 'mechanic' AND text LIKE '[ВИДЕО]%'",
+                (ticket['id'],)
+            )
+            for row in cursor.fetchall():
+                video_path = row[0].replace('[ВИДЕО] ', '')
+                videos.append(video_path)
         
         # Получаем серийный номер и тип лифта
         serial_number = None
@@ -68,16 +78,26 @@ def save_to_knowledge_base(ticket, mechanic_name=None, work_details=None):
         with db.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT serial_number, elevator_type FROM elevators WHERE elevator_id = ?",
+                "SELECT serial_number FROM elevators WHERE elevator_id = ?",
                 (ticket.get('elevator_id'),)
             )
             row = cursor.fetchone()
             if row:
                 serial_number = row[0]
-                elevator_type = row[1] or 'пассажирский'
         
-        # Формируем решение (что было сделано)
-        solution = work_details if work_details else 'Ремонт выполнен'
+        # Формируем решение (все текстовые описания работ)
+        all_work_details = []
+        with db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT text FROM comments WHERE ticket_id = ? AND author = 'mechanic' AND text LIKE '📝%' ORDER BY id",
+                (ticket['id'],)
+            )
+            for row in cursor.fetchall():
+                text = row[0].replace('📝 ', '')
+                all_work_details.append(text)
+        
+        solution = '\n\n'.join(all_work_details) if all_work_details else (work_details if work_details else 'Ремонт выполнен')
         
         # Формируем симптомы (проблема)
         symptoms = [ticket.get('problem_description', '')]
@@ -89,10 +109,10 @@ def save_to_knowledge_base(ticket, mechanic_name=None, work_details=None):
             'symptoms': symptoms,
             'solution': solution,
             'category': 'ремонт',
-            'equipment_type': elevator_type,
             'serial_number': serial_number,
             'photos': photos,
-            'tags': [elevator_type, 'ремонт'],
+            'videos': videos,
+            'tags': ['ремонт'],
             'estimated_time': 60,
             'difficulty_level': 3
         }
