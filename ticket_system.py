@@ -104,8 +104,29 @@ def index():
         shift_end.strftime('%Y-%m-%d %H:%M:%S')
     )
     
-    # Исключаем выполненные и отмененные заявки из списка последних
-    recent_tickets = db.search_tickets(limit=10, exclude_status=['выполнена', 'отменена'])
+    # Исключаем только отмененные заявки
+    recent_tickets = db.search_tickets(exclude_status=['отменена'])
+    
+    # Добавляем дату и время для группировки и фильтрации
+    for ticket in recent_tickets:
+        if ticket.get('created_at'):
+            try:
+                created = datetime.fromisoformat(ticket['created_at'].replace('Z', '+00:00'))
+                created = created + timedelta(hours=4)
+                ticket['ticket_date'] = created.strftime('%Y-%m-%d')
+                ticket['created_time'] = created.strftime('%Y-%m-%d %H:%M')
+            except:
+                pass
+        # Добавляем время завершения
+        if ticket.get('status') == 'выполнена':
+            completed_at = ticket.get('completed_at') or ticket.get('updated_at')
+            if completed_at:
+                try:
+                    completed = datetime.fromisoformat(completed_at.replace('Z', '+00:00'))
+                    completed = completed + timedelta(hours=4)
+                    ticket['completed_time'] = completed.strftime('%Y-%m-%d %H:%M')
+                except:
+                    pass
     
     # Добавляем подъезд и ID лифта к каждой заявке
     for ticket in recent_tickets:
@@ -115,6 +136,38 @@ def index():
                 if elevator.get('entrance'):
                     ticket['entrance'] = f"п.{elevator['entrance']}"
                 ticket['elevator_id_display'] = ticket['elevator_id']
+        
+        # Получаем фото заявки
+        ticket_id = ticket.get('id')
+        if ticket_id:
+            try:
+                conn = db.get_connection()
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT text FROM comments WHERE ticket_id = ? AND text LIKE '[ФОТО]%' LIMIT 4",
+                    (ticket_id,)
+                )
+                photos = [row[0].replace('[ФОТО] ', '') for row in cursor.fetchall()]
+                conn.close()
+                if photos:
+                    ticket['photos'] = photos
+                
+                # Получаем описание работ механика
+                try:
+                    conn = db.get_connection()
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "SELECT text FROM comments WHERE ticket_id = ? AND author = 'mechanic' AND text LIKE '📝%' ORDER BY created_at DESC LIMIT 1",
+                        (ticket_id,)
+                    )
+                    work_row = cursor.fetchone()
+                    conn.close()
+                    if work_row:
+                        ticket['last_work'] = work_row[0].replace('📝 ', '')
+                except:
+                    pass
+            except:
+                pass
     
     # Получить текущего аварийного механика ДО обогащения заявок
     today = datetime.now().strftime('%Y-%m-%d')
@@ -172,14 +225,21 @@ def index():
         except:
             pass
         
-        # Рассчитываем время в работе (для статуса "в работе" используем updated_at)
+        # Рассчитываем время: для выполненных - с created_at до updated_at, для остальных - с created_at до сейчас
         in_work_duration = None
-        if ticket.get('status') == 'в работе' and ticket.get('updated_at'):
+        if ticket.get('created_at'):
             try:
-                updated = datetime.fromisoformat(ticket['updated_at'].replace('Z', '+00:00'))
-                updated = updated + timedelta(hours=4)
-                now = datetime.now() + timedelta(hours=4)
-                diff = now - updated
+                created = datetime.fromisoformat(ticket['created_at'].replace('Z', '+00:00'))
+                created = created + timedelta(hours=4)
+                
+                # Для выполненных заявок используем updated_at как конечное время
+                if ticket.get('status') == 'выполнена' and ticket.get('updated_at'):
+                    end_time = datetime.fromisoformat(ticket['updated_at'].replace('Z', '+00:00'))
+                    end_time = end_time + timedelta(hours=4)
+                else:
+                    end_time = datetime.now()
+                
+                diff = end_time - created
                 hours = diff.total_seconds() // 3600
                 minutes = (diff.total_seconds() % 3600) // 60
                 if hours > 0:
@@ -188,7 +248,6 @@ def index():
                     in_work_duration = f"{int(minutes)}м"
                 ticket['in_work_duration'] = in_work_duration
             except:
-                pass
                 pass
         
         # Получаем список механиков для этого лифта
@@ -397,7 +456,60 @@ def tickets_list():
     if priority:
         filters['priority'] = priority
     
-    tickets = db.search_tickets(filters=filters if filters else None, limit=100)
+    tickets = db.search_tickets(filters=filters if filters else None)
+    
+    # Добавляем дату (день) для группировки
+    for ticket in recent_tickets:
+        if ticket.get('created_at'):
+            try:
+                created = datetime.fromisoformat(ticket['created_at'].replace('Z', '+00:00'))
+                created = created + timedelta(hours=4)
+                ticket['ticket_date'] = created.strftime('%Y-%m-%d')
+            except:
+                pass
+        # Добавляем время завершения для фильтрации
+        if ticket.get('status') == 'выполнена' and ticket.get('completed_at'):
+            try:
+                completed = datetime.fromisoformat(ticket['completed_at'].replace('Z', '+00:00'))
+                completed = completed + timedelta(hours=4)
+                ticket['completed_time'] = completed
+            except:
+                pass
+        elif ticket.get('status') == 'выполнена' and ticket.get('updated_at'):
+            try:
+                completed = datetime.fromisoformat(ticket['updated_at'].replace('Z', '+00:00'))
+                completed = completed + timedelta(hours=4)
+                ticket['completed_time'] = completed
+            except:
+                pass
+    
+    # Добавляем фото и работы к каждой заявке
+    for ticket in tickets:
+        ticket_id = ticket.get('id')
+        if ticket_id:
+            try:
+                conn = db.get_connection()
+                cursor = conn.cursor()
+                # Фото
+                cursor.execute(
+                    "SELECT text FROM comments WHERE ticket_id = ? AND text LIKE '[ФОТО]%' LIMIT 4",
+                    (ticket_id,)
+                )
+                photos = [row[0].replace('[ФОТО] ', '') for row in cursor.fetchall()]
+                if photos:
+                    ticket['photos'] = photos
+                # Работы
+                cursor.execute(
+                    "SELECT text FROM comments WHERE ticket_id = ? AND author = 'mechanic' AND text LIKE '📝%' ORDER BY created_at DESC LIMIT 1",
+                    (ticket_id,)
+                )
+                work_row = cursor.fetchone()
+                if work_row:
+                    ticket['last_work'] = work_row[0].replace('📝 ', '')
+                conn.close()
+            except:
+                pass
+    
     return render_template('tickets_list.html', 
                          tickets=tickets,
                          status_filter=status,
@@ -445,14 +557,20 @@ def ticket_detail(ticket_id):
         elif c.get('text', '').startswith('📝'):
             mechanic_work.append(c)
     
-    # Рассчитать время в работе
+    # Рассчитать время: для выполненных - с created_at до updated_at, для остальных - с created_at до сейчас
     in_work_duration = None
-    if ticket.get('status') == 'в работе' and ticket.get('updated_at'):
+    if ticket.get('created_at'):
         try:
-            updated = datetime.fromisoformat(ticket['updated_at'].replace('Z', '+00:00'))
-            updated = updated + timedelta(hours=4)  # Самара
-            now = datetime.now() + timedelta(hours=4)
-            diff = now - updated
+            created = datetime.fromisoformat(ticket['created_at'].replace('Z', '+00:00'))
+            created = created + timedelta(hours=4)  # Самара
+            
+            if ticket.get('status') == 'выполнена' and ticket.get('updated_at'):
+                end_time = datetime.fromisoformat(ticket['updated_at'].replace('Z', '+00:00'))
+                end_time = end_time + timedelta(hours=4)
+            else:
+                end_time = datetime.now()
+            
+            diff = end_time - created
             hours = diff.total_seconds() // 3600
             minutes = (diff.total_seconds() % 3600) // 60
             if hours > 0:
@@ -811,7 +929,17 @@ def api_get_tickets():
 @app.route('/api/tickets/html', methods=['GET'])
 def api_tickets_html():
     """Получение HTML списка заявок для AJAX обновления"""
-    recent_tickets = db.search_tickets(limit=10, exclude_status=['выполнена', 'отменена'])
+    recent_tickets = db.search_tickets(exclude_status=['отменена'])
+    
+    # Добавляем дату (день) для группировки
+    for ticket in recent_tickets:
+        if ticket.get('created_at'):
+            try:
+                created = datetime.fromisoformat(ticket['created_at'].replace('Z', '+00:00'))
+                created = created + timedelta(hours=4)
+                ticket['ticket_date'] = created.strftime('%Y-%m-%d')
+            except:
+                pass
     
     # Добавляем данные
     for ticket in recent_tickets:
@@ -825,19 +953,57 @@ def api_tickets_html():
         # Статус класс
         ticket['status_class'] = 'status-new' if ticket.get('status') == 'новая' else 'status-in-work' if ticket.get('status') == 'в работе' else 'status-done'
         
-        # Время в работе
-        if ticket.get('status') == 'в работе' and ticket.get('updated_at'):
+        # Время: для выполненных - с created_at до updated_at, для остальных - с created_at до сейчас
+        if ticket.get('created_at'):
             try:
-                updated = datetime.fromisoformat(ticket['updated_at'].replace('Z', '+00:00'))
-                updated = updated + timedelta(hours=4)
-                now = datetime.now() + timedelta(hours=4)
-                diff = now - updated
+                created = datetime.fromisoformat(ticket['created_at'].replace('Z', '+00:00'))
+                created = created + timedelta(hours=4)
+                
+                if ticket.get('status') == 'выполнена' and ticket.get('updated_at'):
+                    end_time = datetime.fromisoformat(ticket['updated_at'].replace('Z', '+00:00'))
+                    end_time = end_time + timedelta(hours=4)
+                else:
+                    end_time = datetime.now()
+                
+                diff = end_time - created
                 hours = diff.total_seconds() // 3600
                 minutes = (diff.total_seconds() % 3600) // 60
                 if hours > 0:
                     ticket['in_work_duration'] = f"{int(hours)}ч {int(minutes)}м"
                 else:
                     ticket['in_work_duration'] = f"{int(minutes)}м"
+            except:
+                pass
+        
+        # Получаем фото заявки
+        ticket_id = ticket.get('id')
+        if ticket_id:
+            try:
+                conn = db.get_connection()
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT text FROM comments WHERE ticket_id = ? AND text LIKE '[ФОТО]%' LIMIT 4",
+                    (ticket_id,)
+                )
+                photos = [row[0].replace('[ФОТО] ', '') for row in cursor.fetchall()]
+                conn.close()
+                if photos:
+                    ticket['photos'] = photos
+                
+                # Получаем описание работ механика
+                try:
+                    conn = db.get_connection()
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "SELECT text FROM comments WHERE ticket_id = ? AND author = 'mechanic' AND text LIKE '📝%' ORDER BY created_at DESC LIMIT 1",
+                        (ticket_id,)
+                    )
+                    work_row = cursor.fetchone()
+                    conn.close()
+                    if work_row:
+                        ticket['last_work'] = work_row[0].replace('📝 ', '')
+                except:
+                    pass
             except:
                 pass
         

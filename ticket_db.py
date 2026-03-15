@@ -283,7 +283,7 @@ class TicketDatabase:
                 return self._row_to_dict(row)
             return None
     
-    def search_tickets(self, filters=None, limit=50, offset=0, exclude_status=None):
+    def search_tickets(self, filters=None, limit=200, offset=0, exclude_status=None):
         """Поиск заявок с фильтрами"""
         query = 'SELECT * FROM tickets WHERE 1=1'
         params = []
@@ -485,15 +485,15 @@ class TicketDatabase:
             new_count = cursor.fetchone()[0]
             
             # Выполненные за смену (у которых completed_at попал в диапазон)
-            # Для старых записей, где нет completed_at, можно искать по updated_at + status='выполнена'
+            # Используем replace для корректного сравнения дат (заменяем T на пробел)
             cursor.execute('''
                 SELECT COUNT(*) FROM tickets 
                 WHERE status = 'выполнена' 
                 AND (
-                    (completed_at >= ? AND completed_at < ?) OR
-                    (completed_at IS NULL AND updated_at >= ? AND updated_at < ?)
+                    (replace(coalesce(completed_at, updated_at), 'T', ' ') >= ? AND 
+                    replace(coalesce(completed_at, updated_at), 'T', ' ') < ?)
                 )
-            ''', (start_time, end_time, start_time, end_time))
+            ''', (start_time, end_time))
             completed_count = cursor.fetchone()[0]
             
             return {

@@ -245,8 +245,7 @@
         <!-- Статистика -->
         <div class="row mb-4">
             <div class="col-lg-3 col-md-6 mb-3">
-                <a href="/tickets" class="text-decoration-none">
-                <div class="stat-card stat-total d-flex align-items-center gap-3">
+                <div class="stat-card stat-total d-flex align-items-center gap-3" style="cursor: pointer;" onclick="showFilter('all')">
                     <div class="stat-icon bg-gradient-primary text-white">
                         <i class="bi bi-inbox"></i>
                     </div>
@@ -255,10 +254,9 @@
                         <div class="h3 mb-0 stat-number" style="color: #3b82f6;">{{ stats.total }}</div>
                     </div>
                 </div>
-                </a>
             </div>
             <div class="col-lg-3 col-md-6 mb-3">
-                <div class="stat-card stat-received d-flex align-items-center gap-3">
+                <div class="stat-card stat-received d-flex align-items-center gap-3" style="cursor: pointer;" onclick="showFilter('new')">
                     <div class="stat-icon bg-gradient-warning text-white">
                         <i class="bi bi-clock"></i>
                     </div>
@@ -269,7 +267,7 @@
                 </div>
             </div>
             <div class="col-lg-3 col-md-6 mb-3">
-                <div class="stat-card stat-work d-flex align-items-center gap-3">
+                <div class="stat-card stat-work d-flex align-items-center gap-3" style="cursor: pointer;" onclick="showFilter('work')">
                     <div class="stat-icon bg-gradient-info text-white">
                         <i class="bi bi-tools"></i>
                     </div>
@@ -280,7 +278,7 @@
                 </div>
             </div>
             <div class="col-lg-3 col-md-6 mb-3">
-                <div class="stat-card stat-done d-flex align-items-center gap-3">
+                <div class="stat-card stat-done d-flex align-items-center gap-3" style="cursor: pointer;" onclick="showFilter('done')">
                     <div class="stat-icon bg-gradient-success text-white">
                         <i class="bi bi-check-circle"></i>
                     </div>
@@ -321,6 +319,8 @@
                 {% set status_class = 'status-new' if ticket.status == 'новая' else 'status-in-work' if ticket.status == 'в работе' else 'status-done' %}
                 <div class="ticket-card {{ status_class }}" 
                      data-status="{{ ticket.status }}"
+                     {% if ticket.created_time %}data-created="{{ ticket.created_time }}"{% endif %}
+                     {% if ticket.completed_time %}data-completed="{{ ticket.completed_time }}"{% endif %}
                      onclick="window.location.href='/ticket/{{ ticket.id }}'">
                       <div class="row g-2">
                           <!-- Левая колонка - заявка -->
@@ -397,6 +397,51 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        // Функция фильтрации по клику на карточку статистики
+        function showFilter(type) {
+            var now = new Date();
+            var today8am = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 8, 0, 0);
+            if (now.getHours() < 8) {
+                today8am.setDate(today8am.getDate() - 1);
+            }
+            
+            var cards = document.querySelectorAll('.ticket-card');
+            cards.forEach(function(card) {
+                var status = card.getAttribute('data-status');
+                var show = true;
+                
+                if (type === 'new') {
+                    if (status === 'новая') {
+                        var createdStr = card.getAttribute('data-created');
+                        if (createdStr) {
+                            var created = new Date(createdStr.replace(' ', 'T'));
+                            show = (created >= today8am);
+                        } else {
+                            show = false;
+                        }
+                    } else {
+                        show = false;
+                    }
+                } else if (type === 'work') {
+                    show = (status === 'в работе');
+                } else if (type === 'done') {
+                    if (status === 'выполнена') {
+                        var completedStr = card.getAttribute('data-completed');
+                        if (completedStr) {
+                            var completed = new Date(completedStr.replace(' ', 'T'));
+                            show = (completed >= today8am);
+                        } else {
+                            show = false;
+                        }
+                    } else {
+                        show = false;
+                    }
+                }
+                // type === 'all' показывает все
+                card.style.display = show ? '' : 'none';
+            });
+        }
+        
         // Инициализация тултипов
         var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
         var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {

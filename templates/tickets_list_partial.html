@@ -5,11 +5,8 @@
      onclick="window.location.href='/ticket/{{ ticket.id }}'">
     <div class="row g-2">
         <!-- Заявка -->
-        <div class="col-12">
+        <div class="col-8">
             <div class="d-flex align-items-center gap-2">
-                {% if ticket.entrance %}
-                <span class="badge bg-secondary" style="font-size: 11px;">{{ ticket.entrance }}</span>
-                {% endif %}
                 {% if ticket.elevator_id_display %}
                 <span class="badge bg-primary" style="font-size: 12px;">№ {{ ticket.elevator_id_display }}</span>
                 {% endif %}
@@ -37,6 +34,23 @@
             </div>
             {% endif %}
         </div>
+        <!-- Фото и работы -->
+        {% if ticket.photos or ticket.last_work %}
+        <div class="col-4 d-flex align-items-start gap-2">
+            {% if ticket.photos %}
+            <div class="flex-shrink-0">
+                {% for photo in ticket.photos %}
+                <img src="/{{ photo }}" 
+                     style="width: 80px; height: 80px; object-fit: cover; border-radius: 4px; cursor: pointer;" 
+                     onclick="event.stopPropagation(); window.location.href='/ticket/{{ ticket.id }}'">
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% if ticket.last_work %}
+            <small class="text-white" style="font-size: 10px;">🔧 {{ ticket.last_work[:50] }}{% if ticket.last_work|length > 50 %}...{% endif %}</small>
+            {% endif %}
+        </div>
+        {% endif %}
     </div>
 </div>
 {% endfor %}
