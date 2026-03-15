@@ -506,8 +506,8 @@ class TicketDatabase:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
-            # Общая статистика
-            cursor.execute('SELECT COUNT(*) FROM tickets')
+            # Общая статистика (исключая отмененные)
+            cursor.execute("SELECT COUNT(*) FROM tickets WHERE status != 'отменена'")
             total = cursor.fetchone()[0]
             
             cursor.execute("SELECT COUNT(*) FROM tickets WHERE status = 'новая'")
