@@ -2,6 +2,8 @@
 {% set status_class = 'status-new' if ticket.status == 'новая' else 'status-in-work' if ticket.status == 'в работе' else 'status-done' %}
 <div class="ticket-card {{ status_class }}" 
      data-status="{{ ticket.status }}"
+     {% if ticket.created_time %}data-created="{{ ticket.created_time }}"{% endif %}
+     {% if ticket.completed_time %}data-completed="{{ ticket.completed_time }}"{% endif %}
      onclick="window.location.href='/ticket/{{ ticket.id }}'">
     <div class="row g-2">
         <!-- Заявка -->

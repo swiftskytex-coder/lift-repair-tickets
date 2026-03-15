@@ -931,15 +931,26 @@ def api_tickets_html():
     """Получение HTML списка заявок для AJAX обновления"""
     recent_tickets = db.search_tickets(exclude_status=['отменена'])
     
-    # Добавляем дату (день) для группировки
+    # Добавляем дату (день) для группировки и время для фильтрации
     for ticket in recent_tickets:
         if ticket.get('created_at'):
             try:
                 created = datetime.fromisoformat(ticket['created_at'].replace('Z', '+00:00'))
                 created = created + timedelta(hours=4)
                 ticket['ticket_date'] = created.strftime('%Y-%m-%d')
+                ticket['created_time'] = created.strftime('%Y-%m-%d %H:%M')
             except:
                 pass
+        # Добавляем время завершения
+        if ticket.get('status') == 'выполнена':
+            completed_at = ticket.get('completed_at') or ticket.get('updated_at')
+            if completed_at:
+                try:
+                    completed = datetime.fromisoformat(completed_at.replace('Z', '+00:00'))
+                    completed = completed + timedelta(hours=4)
+                    ticket['completed_time'] = completed.strftime('%Y-%m-%d %H:%M')
+                except:
+                    pass
     
     # Добавляем данные
     for ticket in recent_tickets:
