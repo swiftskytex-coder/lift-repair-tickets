@@ -36,18 +36,18 @@
         </div>
         <!-- Фото и работы -->
         {% if ticket.photos or ticket.last_work %}
-        <div class="col-4 d-flex align-items-start gap-2">
+        <div class="col-4">
+            {% if ticket.last_work %}
+            <div class="text-white mb-1" style="font-size: 12px;">🔧 {{ ticket.last_work[:50] }}{% if ticket.last_work|length > 50 %}...{% endif %}</div>
+            {% endif %}
             {% if ticket.photos %}
-            <div class="flex-shrink-0">
+            <div style="display: flex; gap: 4px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: thin;">
                 {% for photo in ticket.photos %}
                 <img src="/{{ photo }}" 
-                     style="width: 80px; height: 80px; object-fit: cover; border-radius: 4px; cursor: pointer;" 
+                     style="width: 60px; height: 60px; object-fit: cover; border-radius: 4px; cursor: pointer; flex-shrink: 0;" 
                      onclick="event.stopPropagation(); window.location.href='/ticket/{{ ticket.id }}'">
                 {% endfor %}
             </div>
-            {% endif %}
-            {% if ticket.last_work %}
-            <small class="text-white" style="font-size: 10px;">🔧 {{ ticket.last_work[:50] }}{% if ticket.last_work|length > 50 %}...{% endif %}</small>
             {% endif %}
         </div>
         {% endif %}

@@ -324,11 +324,8 @@
                      onclick="window.location.href='/ticket/{{ ticket.id }}'">
                       <div class="row g-2">
                           <!-- Левая колонка - заявка -->
-                          <div class="col-12">
+                          <div class="col-8">
                               <div class="d-flex align-items-center gap-2">
-                                  {% if ticket.entrance %}
-                                  <span class="badge bg-secondary" style="font-size: 11px;">{{ ticket.entrance }}</span>
-                                  {% endif %}
                                   {% if ticket.elevator_id_display %}
                                   <span class="badge bg-primary" style="font-size: 12px;">№ {{ ticket.elevator_id_display }}</span>
                                   {% endif %}
@@ -356,7 +353,24 @@
                               </div>
                               {% endif %}
                           </div>
-                    </div>
+                          <!-- Правая колонка - работы и фото -->
+                          {% if ticket.photos or ticket.last_work %}
+                          <div class="col-4">
+                              {% if ticket.last_work %}
+                              <div class="text-white mb-1" style="font-size: 12px;">🔧 {{ ticket.last_work[:50] }}{% if ticket.last_work|length > 50 %}...{% endif %}</div>
+                              {% endif %}
+                              {% if ticket.photos %}
+                              <div style="display: flex; gap: 4px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: thin;">
+                                  {% for photo in ticket.photos %}
+                                  <img src="/{{ photo }}" 
+                                       style="width: 60px; height: 60px; object-fit: cover; border-radius: 4px; cursor: pointer; flex-shrink: 0;" 
+                                       onclick="event.stopPropagation(); window.location.href='/ticket/{{ ticket.id }}'">
+                                  {% endfor %}
+                              </div>
+                              {% endif %}
+                          </div>
+                          {% endif %}
+                      </div>
                 </div>
                 {% endfor %}
                 </div>
