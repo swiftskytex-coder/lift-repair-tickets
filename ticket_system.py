@@ -1386,7 +1386,7 @@ def api_docs():
     """Документация API"""
     docs = {
         'name': 'Lift Repair Ticket System API',
-        'version': '2.3',
+        'version': '2.6',
         'endpoints': {
             'GET /api/tickets': 'Получить список заявок',
             'POST /api/tickets': 'Создать новую заявку',
@@ -1567,6 +1567,35 @@ def api_delete_elevator(elevator_id):
             'success': False,
             'error': 'Elevator not found'
         }), 404
+
+
+@app.route('/api/elevators/upload-photo', methods=['POST'])
+def api_upload_elevator_photo():
+    """Загрузка фото подъезда"""
+    if 'photo' not in request.files:
+        return jsonify({'success': False, 'error': 'No photo provided'}), 400
+    
+    photo = request.files['photo']
+    if photo.filename == '':
+        return jsonify({'success': False, 'error': 'No photo selected'}), 400
+    
+    # Создаем директорию для фото подъездов
+    import os
+    upload_dir = 'static/uploads/entrances'
+    os.makedirs(upload_dir, exist_ok=True)
+    
+    # Сохраняем файл
+    import uuid
+    ext = os.path.splitext(photo.filename)[1] if photo.filename else '.jpg'
+    filename = f"{uuid.uuid4()}{ext}"
+    filepath = os.path.join(upload_dir, filename)
+    photo.save(filepath)
+    
+    # Возвращаем путь для Flask static (uploads folder -> /uploads prefix)
+    return jsonify({
+        'success': True,
+        'path': f'/uploads/entrances/{filename}'
+    })
 
 
 # ═══════════════════════════════════════════════════════════════

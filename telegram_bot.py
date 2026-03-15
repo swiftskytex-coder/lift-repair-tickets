@@ -11,6 +11,8 @@ import asyncio
 import json
 import requests
 from datetime import datetime, timedelta
+from PIL import Image
+from io import BytesIO
 from ticket_db import db
 
 # Загрузка переменных окружения
@@ -39,6 +41,36 @@ def get_main_keyboard():
 
 # Токен бота из переменных окружения
 BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
+
+
+def create_key_thumbnail(image_path, size=(240, 80)):
+    """Создаёт узкое превью для фото подъезда (горизонтальная полоска) с центральным кропом"""
+    try:
+        img = Image.open(image_path)
+        target_w, target_h = size
+        orig_w, orig_h = img.size
+        
+        # Центральный кроп - вычисляем квадрат из центра
+        crop_size = min(orig_w, orig_h)
+        left = (orig_w - crop_size) // 2
+        top = (orig_h - crop_size) // 2
+        right = left + crop_size
+        bottom = top + crop_size
+        
+        # Обрезаем центр
+        img = img.crop((left, top, right, bottom))
+        
+        # Теперь растягиваем/сжимаем до нужного размера (Telegram сам отобразит правильно)
+        img = img.resize(size, Image.Resampling.LANCZOS)
+        
+        buffer = BytesIO()
+        img.save(buffer, format='JPEG', quality=80)
+        buffer.seek(0)
+        return buffer
+    except Exception as e:
+        print(f"⚠️ Ошибка создания миниатюры: {e}")
+        return None
+
 
 # Хранилище временных данных
 user_data = {}
@@ -194,17 +226,17 @@ async def send_ticket_to_mechanic(ticket_id, mechanic_chat_id):
     # Получаем информацию о лифте
     elevator = db.get_elevator(ticket.get('elevator_id'))
     
-    # Формируем дату в формате "01 марта 2026 12:00"
+    # Формируем дату в формате "15 марта 22:01"
     try:
         dt = datetime.fromisoformat(ticket['created_at'].replace('Z', '+00:00'))
         dt = dt + timedelta(hours=4)  # Самара
         months = ['', 'января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря']
-        created_at_formatted = f"{dt.day} {months[dt.month]} {dt.year} {dt.hour:02d}:{dt.minute:02d}"
+        created_at_formatted = f"{dt.day} {months[dt.month]} {dt.hour:02d}:{dt.minute:02d}"
     except:
-        created_at_formatted = ticket['created_at'][:16].replace('T', ' ')
+        created_at_formatted = ticket['created_at'][5:16].replace('T', ' ')
     
-    message = f"🚨 НОВАЯ ЗАЯВКА\n"
-    message += f"⏰ {created_at_formatted}\n\n"
+    message = f"🚨 <b>НОВАЯ ЗАЯВКА</b>\n"
+    message += f"⏰ <b>{created_at_formatted}</b>\n\n"
     
     # Адрес без подъезда
     address_clean = ticket['address']
@@ -226,9 +258,50 @@ async def send_ticket_to_mechanic(ticket_id, mechanic_chat_id):
     
     try:
         bot = Bot(token=BOT_TOKEN)
+        
+        # Отправляем фото подъезда с текстом как caption (фото внутри карточки)
+        if elevator and elevator.get('key_photo'):
+            key_photo_path = elevator['key_photo'].lstrip('/')
+            full_path = f"/Users/swiftpanaev/KIRO/test4/{key_photo_path}"
+            try:
+                # Масштабируем по ширине, обрезаем сверху/снизу
+                img = Image.open(full_path)
+                w, h = img.size
+                target_width = 480
+                target_height = 160
+                
+                # Масштабируем по ширине
+                new_w = target_width
+                new_h = int(h * (target_width / w))
+                img_scaled = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+                
+                # Обрезаем сверху/снизу до нужной высоты
+                if new_h > target_height:
+                    top = (new_h - target_height) // 2
+                    img_scaled = img_scaled.crop((0, top, target_width, top + target_height))
+                elif new_h < target_height:
+                    # Если меньше - добавляем черные полосы (или растягиваем)
+                    img_scaled = img_scaled.resize((target_width, target_height), Image.Resampling.LANCZOS)
+                
+                buffer = BytesIO()
+                img_scaled.save(buffer, format='JPEG', quality=85)
+                buffer.seek(0)
+                await bot.send_photo(
+                    chat_id=mechanic_chat_id,
+                    photo=buffer,
+                    caption=message,
+                    parse_mode='HTML',
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+                return True
+            except Exception as e:
+                print(f"⚠️ Ошибка отправки фото подъезда: {e}")
+        
+        # Если нет фото или ошибка - отправляем текст
         await bot.send_message(
             chat_id=mechanic_chat_id,
             text=message,
+            parse_mode='HTML',
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
         return True
