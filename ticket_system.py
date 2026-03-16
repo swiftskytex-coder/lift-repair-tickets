@@ -318,17 +318,15 @@ def index():
             mech_id = mech_info.get('id')
             if mech_id:
                 tm = ticket_mech_statuses.get(str(mech_id))
-                if tm:
+                if tm and tm.get('status'):
                     if tm.get('status') == 'accepted':
                         mech_info['tg_status'] = 'accepted'
                     elif tm.get('status') == 'rejected':
                         mech_info['tg_status'] = 'rejected'
-                    else:
+                    elif tm.get('status') == 'sent':
                         mech_info['tg_status'] = 'sent'
-                else:
-                    mech_info['tg_status'] = 'sent'
-            else:
-                mech_info['tg_status'] = 'sent'
+                # Если нет записи в ticket_mechanics - не показываем статус (сообщение еще не отправлено)
+            # Если mech_id None - тоже ничего не показываем
         
         # Добавляем принявшего механика, если его нет в списке
         if ticket.get('assigned_to'):
@@ -337,14 +335,22 @@ def index():
                 try:
                     mech = db.get_mechanic(int(ticket['assigned_to']))
                     if mech:
-                        tm = ticket_mech_statuses.get(str(mech['id']), {})
+                        tm = ticket_mech_statuses.get(str(mech['id']))
+                        tg_status = None
+                        if tm and tm.get('status'):
+                            if tm.get('status') == 'accepted':
+                                tg_status = 'accepted'
+                            elif tm.get('status') == 'rejected':
+                                tg_status = 'rejected'
+                            elif tm.get('status') == 'sent':
+                                tg_status = 'sent'
                         mechanics_list.append({
                             'name': mech['name'],
                             'id': mech['id'],
                             'has_telegram': bool(mech.get('telegram_chat_id')),
                             'is_oncall': False,
                             'status': 'Принял',
-                            'tg_status': tm.get('status', 'accepted') if tm else 'accepted'
+                            'tg_status': tg_status
                         })
                 except:
                     pass
@@ -1397,7 +1403,7 @@ def api_docs():
     """Документация API"""
     docs = {
         'name': 'Lift Repair Ticket System API',
-        'version': '2.6',
+        'version': '2.7',
         'endpoints': {
             'GET /api/tickets': 'Получить список заявок',
             'POST /api/tickets': 'Создать новую заявку',

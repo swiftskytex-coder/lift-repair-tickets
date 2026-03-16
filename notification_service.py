@@ -343,13 +343,28 @@ async def notify_mechanics_about_ticket(ticket_id):
         except Exception as e:
             print(f"⚠️ Ошибка получения аварийного механика: {e}")
     
+    # ВСЕГДА отправляем хотя бы аварийному (если есть приоритет и есть аварийный)
+    if not linear_mechanics:
+        # Пробуем получить аварийного еще раз (вне зависимости от времени)
+        if ticket.get('priority') != 'низкий':
+            try:
+                today = datetime.now().strftime('%Y-%m-%d')
+                oncall_mechanic = db.get_oncall_mechanic_for_date(today)
+                if not oncall_mechanic:
+                    oncall_mechanic = db.get_next_oncall_mechanic()
+                if oncall_mechanic:
+                    print(f"🚨 Принудительно добавляем аварийного: {oncall_mechanic['name']}")
+                    linear_mechanics = [oncall_mechanic]
+            except Exception as e:
+                print(f"⚠️ Ошибка принудительного добавления аварийного: {e}")
+    
     if not linear_mechanics:
         print(f"⚠️ Нет получателей для уведомления")
         return False
     
     # Отправляем уведомление каждому механику
     sent_count = 0
-    for mechanic in mechanics:
+    for mechanic in linear_mechanics:
         telegram_chat_id = mechanic.get('telegram_chat_id')
         if telegram_chat_id:
             success = await send_ticket_to_mechanic(ticket_id, telegram_chat_id)

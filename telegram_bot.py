@@ -264,28 +264,25 @@ async def send_ticket_to_mechanic(ticket_id, mechanic_chat_id):
             key_photo_path = elevator['key_photo'].lstrip('/')
             full_path = f"/Users/swiftpanaev/KIRO/test4/{key_photo_path}"
             try:
-                # Масштабируем по ширине, обрезаем сверху/снизу
+                # Быстрое уменьшение до маленького размера
                 img = Image.open(full_path)
                 w, h = img.size
-                target_width = 480
-                target_height = 160
                 
-                # Масштабируем по ширине
-                new_w = target_width
-                new_h = int(h * (target_width / w))
-                img_scaled = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
-                
-                # Обрезаем сверху/снизу до нужной высоты
-                if new_h > target_height:
-                    top = (new_h - target_height) // 2
-                    img_scaled = img_scaled.crop((0, top, target_width, top + target_height))
-                elif new_h < target_height:
-                    # Если меньше - добавляем черные полосы (или растягиваем)
-                    img_scaled = img_scaled.resize((target_width, target_height), Image.Resampling.LANCZOS)
+                # Если изображение слишком большое, уменьшаем его сразу
+                max_size = 400
+                if w > max_size or h > max_size:
+                    if w > h:
+                        new_w = max_size
+                        new_h = int(h * (max_size / w))
+                    else:
+                        new_h = max_size
+                        new_w = int(w * (max_size / h))
+                    img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
                 
                 buffer = BytesIO()
-                img_scaled.save(buffer, format='JPEG', quality=85)
+                img.save(buffer, format='JPEG', quality=60, optimize=True)
                 buffer.seek(0)
+                
                 await bot.send_photo(
                     chat_id=mechanic_chat_id,
                     photo=buffer,

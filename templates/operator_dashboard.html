@@ -89,6 +89,34 @@
             border-left: 4px solid #10b981;
         }
         
+        /* Priority badges */
+        .priority-badge {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        
+        .priority-обычный {
+            background: #374151;
+            color: #9ca3af;
+        }
+        
+        .priority-срочный {
+            background: #dc2626;
+            color: #fff;
+        }
+        
+        .priority-низкий {
+            background: #1e40af;
+            color: #fff;
+        }
+        
+        .priority-высокий {
+            background: #f59e0b;
+            color: #000;
+        }
+        
         /* Stat card colored borders */
         .stat-total { border-left: 4px solid #3b82f6 !important; }
         .stat-received { border-left: 4px solid #ef4444 !important; }
@@ -338,15 +366,18 @@
                               {% if ticket.in_work_duration or ticket.mechanics_list %}
                               <div class="mt-1">
                                   {% if ticket.in_work_duration %}
-                                  <span class="badge bg-warning text-dark me-1"><i class="bi bi-clock"></i> {{ ticket.in_work_duration }}</span>
+                                  <span class="badge bg-warning text-dark me-1">
+                                      {% if ticket.status == 'выполнена' %}<i class="bi bi-check-circle"></i>{% else %}<i class="bi bi-clock"></i>{% endif %}
+                                      {{ ticket.in_work_duration }}
+                                  </span>
                                   {% endif %}
                                   {% if ticket.mechanics_list %}
                                   {% for mech in ticket.mechanics_list %}
                                   <span class="text-white me-1" 
                                         data-bs-toggle="tooltip" 
-                                        data-bs-title="{% if mech.status == 'Аварийный' %}Аварийный{% else %}Линейный{% endif %} | {% if mech.tg_status == 'accepted' %}Принял{% elif mech.tg_status == 'rejected' %}Отказ{% else %}Отправлено{% endif %}">
+                                        data-bs-title="{% if mech.status == 'Аварийный' %}Аварийный{% else %}Линейный{% endif %}{% if mech.tg_status == 'accepted' %} | Принял{% elif mech.tg_status == 'rejected' %} | Отказ{% elif mech.tg_status == 'sent' %} | Отправлено{% endif %}">
                                       {{ mech.name.split()[0] }}
-                                      {% if mech.tg_status == 'accepted' %}✓{% elif mech.tg_status == 'rejected' %}✗{% else %}↗{% endif %}
+                                      {% if mech.tg_status == 'accepted' %}<span style="color: #22c55e;">✓</span>{% elif mech.tg_status == 'rejected' %}<span style="color: #ef4444;">✗</span>{% elif mech.tg_status == 'sent' %}<span style="color: #fbbf24;">↗</span>{% endif %}
                                   </span>
                                   {% endfor %}
                                   {% endif %}
@@ -429,7 +460,8 @@
                 var show = true;
                 
                 if (type === 'new') {
-                    if (status === 'новая') {
+                    // Показываем новые и в работе, созданные после 8:00
+                    if (status === 'новая' || status === 'в работе') {
                         var createdStr = card.getAttribute('data-created');
                         if (createdStr) {
                             var created = new Date(createdStr.replace(' ', 'T'));
@@ -536,7 +568,27 @@
                 // Очистить URL
                 window.history.replaceState({}, document.title, "/");
             }
+            
+            // Синхронизация данных с сервером при загрузке
+            loadTicketsFromServer();
         });
+        
+        // Загрузка заявок с сервера для синхронизации
+        async function loadTicketsFromServer() {
+            try {
+                const response = await fetch('/api/tickets/html');
+                const html = await response.text();
+                document.getElementById('ticketsCards').innerHTML = html;
+                showFilter(currentFilter);
+                // Reinitialize tooltips
+                var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+                var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+                  return new bootstrap.Tooltip(tooltipTriggerEl)
+                })
+            } catch (e) {
+                console.error('Error loading tickets:', e);
+            }
+        }
 
         // Создание бэкапа
         async function createBackup(event) {
@@ -672,7 +724,7 @@
             <div class="text-center mb-4">
                 <i class="bi bi-tools" style="font-size: 56px; color: #3b82f6;"></i>
                 <h3 class="mt-3 mb-1">Система заявок</h3>
-                <p class="text-muted mb-0">Версия 2.6</p>
+                <p class="text-muted mb-0">Версия 2.7</p>
             </div>
             <hr style="border-color: #2d3f50;">
             <div class="mb-3">
@@ -698,7 +750,11 @@
                 <h6 class="mb-2"><i class="bi bi-arrow-up-circle"></i> История версий</h6>
                 <div class="small" style="color: #9ca3af;">
                     <div class="mb-2">
-                        <span class="badge bg-primary me-1">2.6</span>
+                        <span class="badge bg-primary me-1">2.7</span>
+                        <span>Синхронизация данных при загрузке, фильтр "Поступило" включает в работе, исправления фото для Telegram</span>
+                    </div>
+                    <div class="mb-2">
+                        <span class="badge bg-secondary me-1">2.6</span>
                         <span>Фото подъезда в Telegram-боте, фильтры после автообновления, исправления фото в справочнике</span>
                     </div>
                     <div class="mb-2">

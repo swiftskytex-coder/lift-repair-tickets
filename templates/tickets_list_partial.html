@@ -21,15 +21,18 @@
             {% if ticket.in_work_duration or ticket.mechanics_list %}
             <div class="mt-1">
                 {% if ticket.in_work_duration %}
-                <span class="badge bg-warning text-dark me-1"><i class="bi bi-clock"></i> {{ ticket.in_work_duration }}</span>
+                <span class="badge bg-warning text-dark me-1">
+                    {% if ticket.status == 'выполнена' %}<i class="bi bi-check-circle"></i>{% else %}<i class="bi bi-clock"></i>{% endif %}
+                    {{ ticket.in_work_duration }}
+                </span>
                 {% endif %}
                 {% if ticket.mechanics_list %}
                 {% for mech in ticket.mechanics_list %}
                 <span class="text-white me-1" 
                       data-bs-toggle="tooltip" 
-                      data-bs-title="{% if mech.status == 'Аварийный' %}Аварийный{% else %}Линейный{% endif %} | {% if mech.tg_status == 'accepted' %}Принял{% elif mech.tg_status == 'rejected' %}Отказ{% else %}Отправлено{% endif %}">
+                      data-bs-title="{% if mech.status == 'Аварийный' %}Аварийный{% else %}Линейный{% endif %}{% if mech.tg_status == 'accepted' %} | Принял{% elif mech.tg_status == 'rejected' %} | Отказ{% elif mech.tg_status == 'sent' %} | Отправлено{% endif %}">
                     {{ mech.name.split()[0] }}
-                    {% if mech.tg_status == 'accepted' %}✓{% elif mech.tg_status == 'rejected' %}✗{% else %}↗{% endif %}
+                    {% if mech.tg_status == 'accepted' %}<span style="color: #22c55e;">✓</span>{% elif mech.tg_status == 'rejected' %}<span style="color: #ef4444;">✗</span>{% elif mech.tg_status == 'sent' %}<span style="color: #fbbf24;">↗</span>{% endif %}
                 </span>
                 {% endfor %}
                 {% endif %}
