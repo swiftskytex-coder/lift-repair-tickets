@@ -112,137 +112,136 @@ async def _send_summaries_async(tickets_by_mechanic):
         if not telegram_chat_id:
             continue
         
-        # Формируем сводку
         today = datetime.now().strftime('%d.%m.%Y')
+        
+        new_tickets = [t for t in tickets if t.get('status') == 'новая']
+        in_progress_tickets = [t for t in tickets if t.get('status') == 'в работе']
+        completed_tickets = [t for t in tickets if t.get('status') == 'выполнена']
+        
         message = f"📋 *Утренняя сводка заявок на {today}*\n\n"
+        message += f"📊 Всего: {len(tickets)} | 🆕 Новых: {len(new_tickets)} | 🔧 В работе: {len(in_progress_tickets)} | ✅ Выполнено: {len(completed_tickets)}\n\n"
         
-        for i, ticket in enumerate(tickets, 1):
-            address = ticket.get('address', 'Адрес не указан')
-            problem = ticket.get('problem_description', '')
-            problem_short = problem[:50] + '...' if len(problem) > 50 else problem
-            status = ticket.get('status', '')
-            
-            # Форматируем статус
-            if status == 'выполнена':
-                status_text = "✅ Выполнено"
-            elif status == 'в работе':
-                status_text = "🔧 В работе"
-            elif status == 'новая':
-                status_text = "🆕 Новая"
-            else:
-                status_text = status
-            
-            created_at = ticket.get('created_at', '')
-            # Форматируем время (только часы:минуты)
-            if created_at:
-                try:
-                    created_at = created_at[11:16]
-                except:
-                    created_at = ''
-            
-            message += f"{i}. *{address}*"
-            if created_at:
-                message += f" 🕐 {created_at}"
-            message += "\n"
-            message += f"   📝 {problem_short}\n"
-            
-            # Для выполненных заявок с фото - отправляем сразу с фото
-            if status == 'выполнена':
-                ticket_id = ticket.get('id')
-                try:
-                    conn = db.get_connection()
-                    cursor = conn.cursor()
-                    
-                    # Получаем фото
-                    cursor.execute(
-                        "SELECT text FROM comments WHERE ticket_id = ? AND author = 'mechanic' AND text LIKE '[ФОТО]%'",
-                        (ticket_id,)
-                    )
-                    photos = [row[0].replace('[ФОТО] ', '') for row in cursor.fetchall()]
-                    
-                    # Получаем описание работ
-                    cursor.execute(
-                        "SELECT text FROM comments WHERE ticket_id = ? AND author = 'mechanic' AND text LIKE '📝%'",
-                        (ticket_id,)
-                    )
-                    work_texts = [row[0].replace('📝 ', '') for row in cursor.fetchall()]
-                    work_text = '\n'.join(work_texts) if work_texts else ''
-                    conn.close()
-                    
-                    if photos:
-                        # Формируем текст с описанием работ
-                        msg = f"{i}. {address}"
-                        if created_at:
-                            msg += f" 🕐 {created_at}"
-                        msg += "\n"
-                        msg += f"📝 {problem_short}\n"
-                        msg += "✅ Выполнено"
-                        if work_text:
-                            msg += f"\n🔧 {work_text[:200]}"
-                            if len(work_text) > 200:
-                                msg += "..."
-                        
-                        # Отправляем первое фото с текстом в одном сообщении
-                        photo_path = photos[0]
-                        full_path = f"/Users/swiftpanaev/KIRO/test4/{photo_path}"
-                        try:
-                            thumb = create_thumbnail(full_path)
-                            if thumb:
-                                await bot.send_photo(
-                                    chat_id=telegram_chat_id,
-                                    photo=thumb,
-                                    caption=msg,
-                                    filename="photo.jpg"
-                                )
-                        except Exception as e:
-                            print(f"⚠️ Ошибка отправки фото {photo_path}: {e}")
-                            # Если не удалось отправить фото, отправляем просто текст
-                            await bot.send_message(
-                                chat_id=telegram_chat_id,
-                                text=msg,
-                                parse_mode='Markdown'
-                            )
-                        
-                        # Если есть второе фото, отправляем отдельно
-                        if len(photos) > 1:
-                            photo_path = photos[1]
-                            full_path = f"/Users/swiftpanaev/KIRO/test4/{photo_path}"
-                            try:
-                                thumb = create_thumbnail(full_path)
-                                if thumb:
-                                    await bot.send_photo(
-                                        chat_id=telegram_chat_id,
-                                        photo=thumb,
-                                        filename="photo.jpg"
-                                    )
-                            except Exception as e:
-                                print(f"⚠️ Ошибка отправки фото {photo_path}: {e}")
-                                pass
-                        continue
-                except Exception as e:
-                    print(f"⚠️ Ошибка получения данных о заявке {ticket.get('id')}: {e}")
-                    pass
-            
-            message += f"   📌 {status_text}\n\n"
+        if new_tickets:
+            message += "━━━━━━━━━━━━━━━━━━━━━━\n"
+            message += "🆕 *НОВЫЕ ЗАЯВКИ*\n"
+            message += "━━━━━━━━━━━━━━━━━━━━━━\n"
+            for i, ticket in enumerate(new_tickets, 1):
+                address = ticket.get('address', 'Адрес не указан')
+                problem = ticket.get('problem_description', '')
+                problem_short = problem[:50] + '...' if len(problem) > 50 else problem
+                created_at = ticket.get('created_at', '')
+                if created_at:
+                    try:
+                        created_at = created_at[11:16]
+                    except:
+                        created_at = ''
+                
+                message += f"{i}. *{address}*"
+                if created_at:
+                    message += f" 🕐 {created_at}"
+                message += f"\n   📝 {problem_short}\n\n"
         
-        message += f"Всего заявок: {len(tickets)}"
+        if in_progress_tickets:
+            message += "━━━━━━━━━━━━━━━━━━━━━━\n"
+            message += "🔧 *В РАБОТЕ*\n"
+            message += "━━━━━━━━━━━━━━━━━━━━━━\n"
+            for i, ticket in enumerate(in_progress_tickets, 1):
+                address = ticket.get('address', 'Адрес не указан')
+                problem = ticket.get('problem_description', '')
+                problem_short = problem[:50] + '...' if len(problem) > 50 else problem
+                created_at = ticket.get('created_at', '')
+                if created_at:
+                    try:
+                        created_at = created_at[11:16]
+                    except:
+                        created_at = ''
+                
+                message += f"{i}. *{address}*"
+                if created_at:
+                    message += f" 🕐 {created_at}"
+                message += f"\n   📝 {problem_short}\n\n"
         
-        # Кнопка для перехода к полному отчёту
         keyboard = [[InlineKeyboardButton("📋 Полный отчёт", url="http://tickets.lift-system.crazedns.ru/")]]
         
         try:
-            # Отправляем остальную часть (без выполненных с фото)
-            if message.strip():
-                await bot.send_message(
-                    chat_id=telegram_chat_id,
-                    text=message,
-                    parse_mode='Markdown',
-                    reply_markup=InlineKeyboardMarkup(keyboard)
-                )
+            await bot.send_message(
+                chat_id=telegram_chat_id,
+                text=message,
+                parse_mode='Markdown',
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+            
+            for ticket in completed_tickets:
+                await _send_completed_ticket_with_photo(bot, telegram_chat_id, ticket)
             
             print(f"✅ Отправлена сводка механику {mechanic['name']}: {len(tickets)} заявок")
         except Exception as e:
             print(f"❌ Не удалось отправить {mechanic['name']}: {e}")
+
+
+async def _send_completed_ticket_with_photo(bot, telegram_chat_id, ticket):
+    """Отправка выполненной заявки с фото"""
+    ticket_id = ticket.get('id')
+    address = ticket.get('address', 'Адрес не указан')
+    problem = ticket.get('problem_description', '')
+    problem_short = problem[:50] + '...' if len(problem) > 50 else problem
+    created_at = ticket.get('created_at', '')
+    if created_at:
+        try:
+            created_at = created_at[11:16]
+        except:
+            created_at = ''
+    
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute(
+            "SELECT text FROM comments WHERE ticket_id = ? AND author = 'mechanic' AND text LIKE '[ФОТО]%'",
+            (ticket_id,)
+        )
+        photos = [row[0].replace('[ФОТО] ', '') for row in cursor.fetchall()]
+        
+        cursor.execute(
+            "SELECT text FROM comments WHERE ticket_id = ? AND author = 'mechanic' AND text LIKE '📝%'",
+            (ticket_id,)
+        )
+        work_texts = [row[0].replace('📝 ', '') for row in cursor.fetchall()]
+        work_text = '\n'.join(work_texts) if work_texts else ''
+        conn.close()
+        
+        msg = f"✅ *{address}*"
+        if created_at:
+            msg += f" 🕐 {created_at}"
+        msg += f"\n📝 {problem_short}"
+        if work_text:
+            msg += f"\n🔧 {work_text[:200]}"
+            if len(work_text) > 200:
+                msg += "..."
+        
+        if photos:
+            photo_path = photos[0]
+            full_path = f"/Users/swiftpanaev/KIRO/test4/{photo_path}"
+            try:
+                thumb = create_thumbnail(full_path)
+                if thumb:
+                    await bot.send_photo(
+                        chat_id=telegram_chat_id,
+                        photo=thumb,
+                        caption=msg,
+                        filename="photo.jpg"
+                    )
+                    return
+            except Exception as e:
+                print(f"⚠️ Ошибка отправки фото {photo_path}: {e}")
+        
+        await bot.send_message(
+            chat_id=telegram_chat_id,
+            text=msg,
+            parse_mode='Markdown'
+        )
+    except Exception as e:
+        print(f"⚠️ Ошибка получения данных о заявке {ticket_id}: {e}")
 
 
 def start_scheduler():
@@ -394,38 +393,15 @@ async def notify_mechanics_about_ticket(ticket_id):
 
 
 async def notify_ticket_completed(ticket_id):
-    """Уведомление о завершении заявки"""
+    """Уведомление всех участников о завершении заявки оператором"""
+    from telegram_bot import notify_all_mechanics_about_completion
+    
     ticket = db.get_ticket(ticket_id)
     if not ticket:
         return False
     
-    # Получаем механика которому была назначена заявка
-    if not ticket.get('assigned_to'):
-        return False
-    
     try:
-        mechanic = db.get_mechanic(int(ticket['assigned_to']))
-    except:
-        return False
-    
-    if not mechanic or not mechanic.get('telegram_chat_id'):
-        return False
-    
-    try:
-        bot = Bot(token=BOT_TOKEN)
-        try:
-            dt = datetime.fromisoformat(ticket['created_at'].replace('Z', '+00:00'))
-            dt = dt + timedelta(hours=4)  # Самара
-            months = ['', 'января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря']
-            created_at_formatted = f"{dt.day} {months[dt.month]} {dt.year} {dt.hour:02d}:{dt.minute:02d}"
-        except:
-            created_at_formatted = ticket['created_at'][:16].replace('T', ' ')
-        
-        await bot.send_message(
-            chat_id=mechanic['telegram_chat_id'],
-            text=f"✅ Заявка от {created_at_formatted} ЗАВЕРШЕНА оператором!\n\n"
-                 f"Спасибо за работу! 💪"
-        )
+        await notify_all_mechanics_about_completion(ticket_id, "Оператор")
         return True
     except Exception as e:
         print(f"❌ Ошибка уведомления о завершении: {e}")

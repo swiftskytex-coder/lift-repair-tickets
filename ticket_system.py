@@ -983,8 +983,20 @@ def api_tickets_html():
                 try:
                     dt = datetime.fromisoformat(created.replace('Z', '+00:00'))
                     dt = dt + timedelta(hours=4)
+                    # Новая или в работе - поступила с 8:00
                     if (ticket.get('status') == 'новая' or ticket.get('status') == 'в работе') and dt >= today8am:
                         filtered.append(ticket)
+                    # Выполнена сегодня - тоже показываем
+                    elif ticket.get('status') == 'выполнена':
+                        completed = ticket.get('completed_at') or ticket.get('updated_at')
+                        if completed:
+                            try:
+                                ct = datetime.fromisoformat(completed.replace('Z', '+00:00'))
+                                ct = ct + timedelta(hours=4)
+                                if ct >= today8am:
+                                    filtered.append(ticket)
+                            except:
+                                pass
                 except:
                     pass
         recent_tickets = filtered
@@ -1486,7 +1498,7 @@ def api_docs():
     """Документация API"""
     docs = {
         'name': 'Lift Repair Ticket System API',
-        'version': '2.9',
+        'version': '3.0',
         'endpoints': {
             'GET /api/tickets': 'Получить список заявок',
             'POST /api/tickets': 'Создать новую заявку',

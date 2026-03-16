@@ -18,6 +18,11 @@
             <div class="small mt-1 text-white">
                 <i class="bi bi-geo-alt"></i> {{ ticket.address }}
             </div>
+            {% if ticket.problem_description %}
+            <div class="small mt-1 text-white-50" style="font-size: 11px;">
+                {{ ticket.problem_description[:80] }}{% if ticket.problem_description|length > 80 %}...{% endif %}
+            </div>
+            {% endif %}
             {% if ticket.in_work_duration or ticket.mechanics_list %}
             <div class="mt-1">
                 {% if ticket.in_work_duration and ticket.status != 'выполнена' %}
