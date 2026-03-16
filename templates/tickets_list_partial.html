@@ -20,9 +20,16 @@
             </div>
             {% if ticket.in_work_duration or ticket.mechanics_list %}
             <div class="mt-1">
-                {% if ticket.in_work_duration %}
+                {% if ticket.in_work_duration and ticket.status != 'выполнена' %}
+                <span class="badge bg-warning text-dark me-1 timer-badge" 
+                      data-created="{{ ticket.created_at }}"
+                      data-status="{{ ticket.status }}">
+                    <i class="bi bi-clock"></i>
+                    <span class="timer-value">{{ ticket.in_work_duration }}</span>
+                </span>
+                {% elif ticket.in_work_duration and ticket.status == 'выполнена' %}
                 <span class="badge bg-warning text-dark me-1">
-                    {% if ticket.status == 'выполнена' %}<i class="bi bi-check-circle"></i>{% else %}<i class="bi bi-clock"></i>{% endif %}
+                    <i class="bi bi-check-circle"></i>
                     {{ ticket.in_work_duration }}
                 </span>
                 {% endif %}
@@ -40,19 +47,20 @@
             {% endif %}
         </div>
         <!-- Фото и работы -->
-        {% if ticket.photos or ticket.last_work %}
+        {% if ticket.photos or ticket.videos or ticket.last_work %}
         <div class="col-4">
-            {% if ticket.last_work %}
-            <div class="text-white mb-1" style="font-size: 12px;">🔧 {{ ticket.last_work[:50] }}{% if ticket.last_work|length > 50 %}...{% endif %}</div>
-            {% endif %}
-            {% if ticket.photos %}
-            <div style="display: flex; gap: 4px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: thin;">
-                {% for photo in ticket.photos %}
-                <img src="/{{ photo }}" 
-                     style="width: 60px; height: 60px; object-fit: cover; border-radius: 4px; cursor: pointer; flex-shrink: 0;" 
-                     onclick="event.stopPropagation(); window.location.href='/ticket/{{ ticket.id }}'">
-                {% endfor %}
+            <!-- Бейджики -->
+            <div class="mb-1">
+                {% if ticket.photos %}
+                <span class="badge bg-primary me-1" style="font-size: 14px;">📷 {{ ticket.photos|length }}</span>
+                {% endif %}
+                {% if ticket.videos %}
+                <span class="badge bg-danger" style="font-size: 14px;">🎥 {{ ticket.videos|length }}</span>
+                {% endif %}
             </div>
+            <!-- Текст отчета -->
+            {% if ticket.last_work %}
+            <div class="text-white mt-1" style="font-size: 11px;">🔧 {{ ticket.last_work[:60] }}{% if ticket.last_work|length > 60 %}...{% endif %}</div>
             {% endif %}
         </div>
         {% endif %}

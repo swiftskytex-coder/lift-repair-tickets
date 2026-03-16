@@ -318,6 +318,12 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ticket_id = int(data.split("_")[1])
         print(f"DEBUG: accept_ pressed for ticket {ticket_id}, chat_id={chat_id}")
         
+        # Проверяем, не принята ли уже заявка
+        ticket = db.get_ticket(ticket_id)
+        if ticket and ticket.get('status') == 'в работе':
+            await query.answer("Заявка уже принята", show_alert=True)
+            return
+        
         # Получаем данные текущего механика
         mechanic = db.get_mechanic_by_telegram(chat_id)
         print(f"DEBUG: mechanic = {mechanic}")
@@ -336,33 +342,18 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db.accept_ticket(ticket_id, mechanic['id'])
         db.add_comment(ticket_id, 'system', f"👤 Механик {name} принял заявку в работу")
         
-        # Формируем сообщение с кнопками
-        ticket = db.get_ticket(ticket_id)
-        
-        # Адрес без подъезда
-        address_clean = ticket['address']
-        for prefix in ['подъезд ', 'Подъезд ', 'п. ', 'П. ']:
-            if prefix in address_clean.lower():
-                address_clean = address_clean.split(prefix)[0].rstrip()
-        
-        # Подъезд и тип
-        elevator = db.get_elevator(ticket.get('elevator_id'))
-        elevator_info = ""
-        if elevator and elevator.get('entrance'):
-            elevator_info = f"Подъезд: {elevator['entrance']} {elevator.get('elevator_type', 'лифт')}\n"
-        
-        message = f"✅ ЗАЯВКА ПРИНЯТА В РАБОТУ\n\n"
-        message += f"📍 Адрес: {address_clean}\n"
-        message += elevator_info
-        message += f"📝 Проблема: {ticket['problem_description']}\n\n"
-        message += "📸 Отправьте фото выполненной работы и использованных запчастей\n"
-        message += "📝 Опишите, что было сделано?\n"
+        message = f"✅ Заявка принята в работу!\n\n📸 Отправьте фото и описание работ"
         
         keyboard = [
             [InlineKeyboardButton("✅ Завершить", callback_data=f"quick_ready_{ticket_id}")]
         ]
         
-        await query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(keyboard))
+        # Отправляем новое сообщение (не редактируем)
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=message,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
         
         # Сохраняем ID заявки для приёма фото и описания
         user_data[chat_id] = {'ticket_id': ticket_id, 'status': 'awaiting_photos'}
@@ -673,8 +664,8 @@ async def handle_work_details(update: Update, context: ContextTypes.DEFAULT_TYPE
     chat_id = update.effective_chat.id
     print(f"DEBUG handle_work_details: chat_id={chat_id}, user_data={user_data.get(chat_id)}")
     
-    if chat_id not in user_data or user_data[chat_id].get('status') != 'awaiting_work_details':
-        print(f"DEBUG: status not awaiting_work_details, got: {user_data.get(chat_id, {}).get('status')}")
+    if chat_id not in user_data or user_data[chat_id].get('status') not in ['awaiting_work_details', 'awaiting_photos_complete']:
+        print(f"DEBUG: status not awaiting_work_details/awaiting_photos_complete, got: {user_data.get(chat_id, {}).get('status')}")
         return
     
     new_text = update.message.text

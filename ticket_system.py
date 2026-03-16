@@ -735,6 +735,32 @@ def ticket_detail(ticket_id):
             'photo_path': '/' + p.get('text', '').replace('[ФОТО] ', '')
         })
     
+    # 3.1. Видеоотчёты
+    for v in video_comments:
+        ts = v.get('created_at', '')
+        if ts:
+            try:
+                dt = datetime.strptime(ts[:19], '%Y-%m-%d %H:%M:%S')
+                dt = dt + timedelta(hours=4)
+                ts_sort = dt.timestamp()
+                ts_display = dt.strftime('%Y-%m-%d %H:%M')
+            except:
+                ts_sort = 0
+                ts_display = ts[:16]
+        else:
+            ts_sort = 0
+            ts_display = ''
+        timeline.append({
+            'timestamp': ts_display,
+            'timestamp_sort': ts_sort,
+            'type': 'video',
+            'action': '🎥 Видеоотчёт',
+            'user': v.get('author', ''),
+            'icon': 'bi-camera-video',
+            'color': 'status-photo',
+            'video_path': '/' + v.get('text', '').replace('[ВИДЕО] ', '')
+        })
+    
     # 4. Текстовые описания работ
     for w in mechanic_work:
         ts = w.get('created_at', '')
@@ -1048,6 +1074,21 @@ def api_tickets_html():
                 conn.close()
                 if photos:
                     ticket['photos'] = photos
+                
+                # Получаем видео
+                try:
+                    conn = db.get_connection()
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "SELECT text FROM comments WHERE ticket_id = ? AND text LIKE '[ВИДЕО]%' LIMIT 2",
+                        (ticket_id,)
+                    )
+                    videos = [row[0].replace('[ВИДЕО] ', '') for row in cursor.fetchall()]
+                    conn.close()
+                    if videos:
+                        ticket['videos'] = videos
+                except:
+                    pass
                 
                 # Получаем описание работ механика
                 try:
@@ -1445,7 +1486,7 @@ def api_docs():
     """Документация API"""
     docs = {
         'name': 'Lift Repair Ticket System API',
-        'version': '2.8',
+        'version': '2.9',
         'endpoints': {
             'GET /api/tickets': 'Получить список заявок',
             'POST /api/tickets': 'Создать новую заявку',

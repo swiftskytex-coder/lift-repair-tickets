@@ -457,7 +457,7 @@
                 {% endif %}
 
                 <!-- Фото и описание работ - 2 колонки -->
-                {% if photo_comments or mechanic_work %}
+                {% if photo_comments or video_comments or mechanic_work %}
                 <div class="detail-card">
                     <div class="row g-4">
                         <!-- Левая колонка - Фотографии -->
@@ -482,13 +482,13 @@
                             {% endif %}
                         </div>
                         
-                        <!-- Видео -->
-                        {% if video_comments %}
-                        <div class="mt-3">
+                        <!-- Правая колонка - Видео и Описание работ -->
+                        <div class="col-md-6">
+                            {% if video_comments %}
                             <div class="section-title">
                                 <i class="bi bi-camera-video" style="color: #ef4444;"></i> Видео
                             </div>
-                            <div class="row g-2">
+                            <div class="row g-2 mb-3">
                                 {% for video in video_comments %}
                                 {% set video_path = '/' + video.text.replace('[ВИДЕО] ', '') %}
                                 <div class="col-12">
@@ -499,11 +499,8 @@
                                 </div>
                                 {% endfor %}
                             </div>
-                        </div>
-                        {% endif %}
-                        
-                        <!-- Правая колонка - Описание работ -->
-                        <div class="col-md-6">
+                            {% endif %}
+                            
                             {% if mechanic_work %}
                             <div class="section-title">
                                 <i class="bi bi-tools" style="color: #10b981;"></i> Выполненные работы

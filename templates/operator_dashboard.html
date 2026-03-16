@@ -429,6 +429,33 @@
                 console.error('Error updating tickets:', e);
             }
         }, 30000);
+        
+        // Обновление таймеров каждую минуту
+        function updateTimers() {
+            const now = new Date();
+            const timers = document.querySelectorAll('.timer-badge');
+            timers.forEach(timer => {
+                const created = timer.getAttribute('data-created');
+                if (created) {
+                    try {
+                        const createdDate = new Date(created.replace(' ', 'T'));
+                        const diff = Math.floor((now - createdDate) / 1000);
+                        const hours = Math.floor(diff / 3600);
+                        const minutes = Math.floor((diff % 3600) / 60);
+                        let text = '';
+                        if (hours > 0) text = hours + 'ч ' + minutes + 'м';
+                        else text = minutes + 'м';
+                        const span = timer.querySelector('.timer-value');
+                        if (span) span.textContent = text;
+                    } catch (e) {}
+                }
+            });
+        }
+        
+        // Запускаем обновление таймеров каждую минуту
+        setInterval(updateTimers, 60000);
+        // И сразу при загрузке
+        updateTimers();
 
         // Переключение темы день/ночь
         function toggleTheme() {
@@ -664,7 +691,7 @@
             <div class="text-center mb-4">
                 <i class="bi bi-tools" style="font-size: 56px; color: #3b82f6;"></i>
                 <h3 class="mt-3 mb-1">Система заявок</h3>
-                <p class="text-muted mb-0">Версия 2.8</p>
+                <p class="text-muted mb-0">Версия 2.9</p>
             </div>
             <hr style="border-color: #2d3f50;">
             <div class="mb-3">
@@ -690,8 +717,12 @@
                 <h6 class="mb-2"><i class="bi bi-arrow-up-circle"></i> История версий</h6>
                 <div class="small" style="color: #9ca3af;">
                     <div class="mb-2">
-                        <span class="badge bg-primary me-1">2.8</span>
-                        <span>Буфер заявок, фильтры stat cards, удалены кнопки фильтров, server-side фильтрация</span>
+                        <span class="badge bg-primary me-1">2.9</span>
+                        <span>Бейджи фото/видео, обновление таймера, видео в истории, исправления</span>
+                    </div>
+                    <div class="mb-2">
+                        <span class="badge bg-secondary me-1">2.8</span>
+                        <span>Буфер заявок, фильтры stat cards, server-side фильтрация</span>
                     </div>
                     <div class="mb-2">
                         <span class="badge bg-secondary me-1">2.7</span>
