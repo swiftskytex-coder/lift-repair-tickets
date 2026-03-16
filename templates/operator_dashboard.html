@@ -328,87 +328,13 @@
                 </div>
                 
                 <div id="ticketsList">
-                <div class="btn-group mb-2" role="group">
-                    <input type="radio" class="btn-check" name="statusFilter" id="filterAll" checked autocomplete="off">
-                    <label class="btn btn-sm btn-outline-primary" for="filterAll">Все</label>
-                    
-                    <input type="radio" class="btn-check" name="statusFilter" id="filterNew" autocomplete="off">
-                    <label class="btn btn-sm btn-outline-danger" for="filterNew">⏳ Новые</label>
-                    
-                    <input type="radio" class="btn-check" name="statusFilter" id="filterWork" autocomplete="off">
-                    <label class="btn btn-sm btn-outline-warning" for="filterWork">🔧 В работе</label>
-                    
-                    <input type="radio" class="btn-check" name="statusFilter" id="filterDone" autocomplete="off">
-                    <label class="btn btn-sm btn-outline-success" for="filterDone">✅ Готовы</label>
-                </div>
 
                 <div id="ticketsCards">
-                {% for ticket in tickets %}
-                {% set status_class = 'status-new' if ticket.status == 'новая' else 'status-in-work' if ticket.status == 'в работе' else 'status-done' %}
-                <div class="ticket-card {{ status_class }}" 
-                     data-status="{{ ticket.status }}"
-                     {% if ticket.created_time %}data-created="{{ ticket.created_time }}"{% endif %}
-                     {% if ticket.completed_time %}data-completed="{{ ticket.completed_time }}"{% endif %}
-                     onclick="window.location.href='/ticket/{{ ticket.id }}'">
-                      <div class="row g-2">
-                          <!-- Левая колонка - заявка -->
-                          <div class="col-8">
-                              <div class="d-flex align-items-center gap-2">
-                                  {% if ticket.elevator_id_display %}
-                                  <span class="badge bg-primary" style="font-size: 12px;">№ {{ ticket.elevator_id_display }}</span>
-                                  {% endif %}
-                                  <span class="text-white">{{ ticket.created_at|samara_time }}</span>
-                                  <span class="priority-badge priority-{{ ticket.priority }}">{{ ticket.priority }}</span>
-                              </div>
-                              <div class="small mt-1 text-white">
-                                  <i class="bi bi-geo-alt"></i> {{ ticket.address }}
-                              </div>
-                              {% if ticket.in_work_duration or ticket.mechanics_list %}
-                              <div class="mt-1">
-                                  {% if ticket.in_work_duration %}
-                                  <span class="badge bg-warning text-dark me-1">
-                                      {% if ticket.status == 'выполнена' %}<i class="bi bi-check-circle"></i>{% else %}<i class="bi bi-clock"></i>{% endif %}
-                                      {{ ticket.in_work_duration }}
-                                  </span>
-                                  {% endif %}
-                                  {% if ticket.mechanics_list %}
-                                  {% for mech in ticket.mechanics_list %}
-                                  <span class="text-white me-1" 
-                                        data-bs-toggle="tooltip" 
-                                        data-bs-title="{% if mech.status == 'Аварийный' %}Аварийный{% else %}Линейный{% endif %}{% if mech.tg_status == 'accepted' %} | Принял{% elif mech.tg_status == 'rejected' %} | Отказ{% elif mech.tg_status == 'sent' %} | Отправлено{% endif %}">
-                                      {{ mech.name.split()[0] }}
-                                      {% if mech.tg_status == 'accepted' %}<span style="color: #22c55e;">✓</span>{% elif mech.tg_status == 'rejected' %}<span style="color: #ef4444;">✗</span>{% elif mech.tg_status == 'sent' %}<span style="color: #fbbf24;">↗</span>{% endif %}
-                                  </span>
-                                  {% endfor %}
-                                  {% endif %}
-                              </div>
-                              {% endif %}
-                          </div>
-                          <!-- Правая колонка - работы и фото -->
-                          {% if ticket.photos or ticket.last_work %}
-                          <div class="col-4">
-                              {% if ticket.last_work %}
-                              <div class="text-white mb-1" style="font-size: 12px;">🔧 {{ ticket.last_work[:50] }}{% if ticket.last_work|length > 50 %}...{% endif %}</div>
-                              {% endif %}
-                              {% if ticket.photos %}
-                              <div style="display: flex; gap: 4px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: thin;">
-                                  {% for photo in ticket.photos %}
-                                  <img src="/{{ photo }}" 
-                                       style="width: 60px; height: 60px; object-fit: cover; border-radius: 4px; cursor: pointer; flex-shrink: 0;" 
-                                       onclick="event.stopPropagation(); window.location.href='/ticket/{{ ticket.id }}'">
-                                  {% endfor %}
-                              </div>
-                              {% endif %}
-                          </div>
-                          {% endif %}
-                      </div>
+                    <div class="text-center text-muted py-5">
+                        <div class="spinner-border text-primary" role="status"></div>
+                        <div class="mt-2">Загрузка заявок...</div>
+                    </div>
                 </div>
-                {% endfor %}
-                </div>
-                </div>
-            </div>
-        </div>
-    </div>
 
     <!-- Модальное окно восстановления бэкапа -->
     <div id="restoreModal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5);">
@@ -444,76 +370,47 @@
     <script>
         // Текущий фильтр
         var currentFilter = 'all';
-
+        
+        // Буфер для всех заявок
+        var allTicketsBuffer = {};
+        
         // Функция фильтрации по клику на карточку статистики
         function showFilter(type) {
             currentFilter = type;
-            var now = new Date();
-            var today8am = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 8, 0, 0);
-            if (now.getHours() < 8) {
-                today8am.setDate(today8am.getDate() - 1);
+            localStorage.setItem('filter', type);
+            
+            // Если есть в буфере - используем (мгновенно)
+            if (allTicketsBuffer[type]) {
+                document.getElementById('ticketsCards').innerHTML = allTicketsBuffer[type];
+                initTooltips();
+                return;
             }
             
-            var cards = document.querySelectorAll('.ticket-card');
-            cards.forEach(function(card) {
-                var status = card.getAttribute('data-status');
-                var show = true;
-                
-                if (type === 'new') {
-                    // Показываем новые и в работе, созданные после 8:00
-                    if (status === 'новая' || status === 'в работе') {
-                        var createdStr = card.getAttribute('data-created');
-                        if (createdStr) {
-                            var created = new Date(createdStr.replace(' ', 'T'));
-                            show = (created >= today8am);
-                        } else {
-                            show = false;
-                        }
-                    } else {
-                        show = false;
-                    }
-                } else if (type === 'work') {
-                    show = (status === 'в работе');
-                } else if (type === 'done') {
-                    if (status === 'выполнена') {
-                        var completedStr = card.getAttribute('data-completed');
-                        if (completedStr) {
-                            var completed = new Date(completedStr.replace(' ', 'T'));
-                            show = (completed >= today8am);
-                        } else {
-                            show = false;
-                        }
-                    } else {
-                        show = false;
-                    }
-                }
-                // type === 'all' показывает все
-                card.style.display = show ? '' : 'none';
-            });
+            // Иначе загружаем и сохраняем в буфер
+            fetch('/api/tickets/html?filter=' + type)
+                .then(response => response.text())
+                .then(html => {
+                    allTicketsBuffer[type] = html;
+                    document.getElementById('ticketsCards').innerHTML = html;
+                    initTooltips();
+                })
+                .catch(e => console.error('Error:', e));
         }
         
-        // Инициализация тултипов
-        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
-        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-          return new bootstrap.Tooltip(tooltipTriggerEl)
-        })
-
-        // Фильтр заявок
-        document.querySelectorAll('input[name="statusFilter"]').forEach(radio => {
-            radio.addEventListener('change', function() {
-                const filter = this.id.replace('filter', '').toLowerCase();
-                document.querySelectorAll('.ticket-card').forEach(card => {
-                    const status = card.dataset.status;
-                    
-                    let show = true;
-                    if (filter === 'new') show = status === 'новая';
-                    else if (filter === 'work') show = status === 'в работе';
-                    else if (filter === 'done') show = status === 'выполнена';
-                    
-                    card.style.display = show ? '' : 'none';
-                });
-            });
-        });
+        function initTooltips() {
+            var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+            var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl)
+            })
+        }
+        
+        // Инициализация тултипов при загрузке
+        function initTooltips() {
+            var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+            var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+              return new bootstrap.Tooltip(tooltipTriggerEl)
+            })
+        }
 
         // Автообновление каждые 30 секунд через AJAX
         setInterval(async () => {
@@ -570,14 +467,57 @@
             }
             
             // Синхронизация данных с сервером при загрузке
+            // По умолчанию фильтр - новые
+            if (!localStorage.getItem('filter')) {
+                localStorage.setItem('filter', 'new');
+            }
+            currentFilter = localStorage.getItem('filter') || 'new';
             loadTicketsFromServer();
+            
+            // Загружаем все заявки в буфер в фоне
+            loadAllTicketsToBuffer();
         });
+        
+        // Загрузка всех заявок в буфер
+        async function loadAllTicketsToBuffer() {
+            try {
+                const response = await fetch('/api/tickets/html?filter=all');
+                allTicketsBuffer['all'] = await response.text();
+                
+                const responseNew = await fetch('/api/tickets/html?filter=new');
+                allTicketsBuffer['new'] = await responseNew.text();
+                
+                const responseWork = await fetch('/api/tickets/html?filter=work');
+                allTicketsBuffer['work'] = await responseWork.text();
+                
+                const responseDone = await fetch('/api/tickets/html?filter=done');
+                allTicketsBuffer['done'] = await responseDone.text();
+                
+                console.log('Все заявки загружены в буфер');
+            } catch (e) {
+                console.error('Ошибка загрузки в буфер:', e);
+            }
+        }
         
         // Загрузка заявок с сервера для синхронизации
         async function loadTicketsFromServer() {
             try {
-                const response = await fetch('/api/tickets/html');
-                const html = await response.text();
+                const urlParams = new URLSearchParams(window.location.search);
+                const urlFilter = urlParams.get('filter');
+                if (urlFilter && ['new', 'work', 'done', 'all'].includes(urlFilter)) {
+                    currentFilter = urlFilter;
+                    localStorage.setItem('filter', urlFilter);
+                }
+                
+                // Если есть в буфере - используем, иначе загружаем
+                let html;
+                if (allTicketsBuffer[currentFilter]) {
+                    html = allTicketsBuffer[currentFilter];
+                } else {
+                    const response = await fetch('/api/tickets/html?filter=' + currentFilter);
+                    html = await response.text();
+                }
+                
                 document.getElementById('ticketsCards').innerHTML = html;
                 showFilter(currentFilter);
                 // Reinitialize tooltips
@@ -724,7 +664,7 @@
             <div class="text-center mb-4">
                 <i class="bi bi-tools" style="font-size: 56px; color: #3b82f6;"></i>
                 <h3 class="mt-3 mb-1">Система заявок</h3>
-                <p class="text-muted mb-0">Версия 2.7</p>
+                <p class="text-muted mb-0">Версия 2.8</p>
             </div>
             <hr style="border-color: #2d3f50;">
             <div class="mb-3">
@@ -750,8 +690,12 @@
                 <h6 class="mb-2"><i class="bi bi-arrow-up-circle"></i> История версий</h6>
                 <div class="small" style="color: #9ca3af;">
                     <div class="mb-2">
-                        <span class="badge bg-primary me-1">2.7</span>
-                        <span>Синхронизация данных при загрузке, фильтр "Поступило" включает в работе, исправления фото для Telegram</span>
+                        <span class="badge bg-primary me-1">2.8</span>
+                        <span>Буфер заявок, фильтры stat cards, удалены кнопки фильтров, server-side фильтрация</span>
+                    </div>
+                    <div class="mb-2">
+                        <span class="badge bg-secondary me-1">2.7</span>
+                        <span>Синхронизация при загрузке, фильтр Поступило+в работе, улучшенное фото Telegram</span>
                     </div>
                     <div class="mb-2">
                         <span class="badge bg-secondary me-1">2.6</span>

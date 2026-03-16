@@ -441,11 +441,23 @@ class TicketDatabase:
         """Механик принял заявку"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute('''
-                UPDATE ticket_mechanics 
-                SET status = 'accepted', responded_at = CURRENT_TIMESTAMP
-                WHERE ticket_id = ? AND mechanic_id = ?
-            ''', (ticket_id, mechanic_id))
+            # Проверяем, есть ли запись
+            cursor.execute('SELECT id FROM ticket_mechanics WHERE ticket_id = ? AND mechanic_id = ?', (ticket_id, mechanic_id))
+            existing = cursor.fetchone()
+            
+            if existing:
+                # Обновляем существующую запись
+                cursor.execute('''
+                    UPDATE ticket_mechanics 
+                    SET status = 'accepted', responded_at = CURRENT_TIMESTAMP
+                    WHERE ticket_id = ? AND mechanic_id = ?
+                ''', (ticket_id, mechanic_id))
+            else:
+                # Создаем новую запись (если механик принял, но уведомление ему не отправлялось)
+                cursor.execute('''
+                    INSERT INTO ticket_mechanics (ticket_id, mechanic_id, sent_at, status, responded_at)
+                    VALUES (?, ?, CURRENT_TIMESTAMP, 'accepted', CURRENT_TIMESTAMP)
+                ''', (ticket_id, mechanic_id))
             conn.commit()
     
     def reject_ticket(self, ticket_id, mechanic_id):

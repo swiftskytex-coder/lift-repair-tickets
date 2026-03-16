@@ -935,7 +935,49 @@ def api_get_tickets():
 @app.route('/api/tickets/html', methods=['GET'])
 def api_tickets_html():
     """Получение HTML списка заявок для AJAX обновления"""
+    # Получаем фильтр из параметра
+    filter_type = request.args.get('filter', 'all')
+    
+    # Вычисляем время 8:00 для фильтрации
+    now = datetime.now()
+    if now.hour < 8:
+        today8am = (now - timedelta(days=1)).replace(hour=8, minute=0, second=0, microsecond=0)
+    else:
+        today8am = now.replace(hour=8, minute=0, second=0, microsecond=0)
+    
+    # Базовая выборка
     recent_tickets = db.search_tickets(exclude_status=['отменена'])
+    
+    # Фильтруем на сервере если указан фильтр
+    if filter_type == 'new':
+        filtered = []
+        for ticket in recent_tickets:
+            created = ticket.get('created_at')
+            if created:
+                try:
+                    dt = datetime.fromisoformat(created.replace('Z', '+00:00'))
+                    dt = dt + timedelta(hours=4)
+                    if (ticket.get('status') == 'новая' or ticket.get('status') == 'в работе') and dt >= today8am:
+                        filtered.append(ticket)
+                except:
+                    pass
+        recent_tickets = filtered
+    elif filter_type == 'work':
+        recent_tickets = [t for t in recent_tickets if t.get('status') == 'в работе']
+    elif filter_type == 'done':
+        filtered = []
+        for ticket in recent_tickets:
+            if ticket.get('status') == 'выполнена':
+                completed = ticket.get('completed_at') or ticket.get('updated_at')
+                if completed:
+                    try:
+                        dt = datetime.fromisoformat(completed.replace('Z', '+00:00'))
+                        dt = dt + timedelta(hours=4)
+                        if dt >= today8am:
+                            filtered.append(ticket)
+                    except:
+                        pass
+        recent_tickets = filtered
     
     # Добавляем дату (день) для группировки и время для фильтрации
     for ticket in recent_tickets:
@@ -1403,7 +1445,7 @@ def api_docs():
     """Документация API"""
     docs = {
         'name': 'Lift Repair Ticket System API',
-        'version': '2.7',
+        'version': '2.8',
         'endpoints': {
             'GET /api/tickets': 'Получить список заявок',
             'POST /api/tickets': 'Создать новую заявку',
