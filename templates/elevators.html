@@ -133,7 +133,14 @@
                             <td style="max-width: 80px;">{{ elevator.entrance or '-' }}</td>
                             <td style="max-width: 80px;">
                                 {% if elevator.key_photo %}
-                                <img src="{{ elevator.key_photo }}" class="key-photo" style="width: 40px; height: 40px; object-fit: cover; border-radius: 4px;">
+                                {% set photo_path = elevator.key_photo %}
+                                {% if photo_path.startswith('/uploads/') %}
+                                {% set photo_path = '/static' + photo_path %}
+                                {% elif not photo_path.startswith('/static') %}
+                                {% set photo_path = '/static/uploads/entrances/' + photo_path %}
+                                {% endif %}
+                                <img src="{{ photo_path }}" class="key-photo" style="width: 40px; height: 40px; object-fit: cover; border-radius: 4px;" 
+                                     onerror="this.parentElement.innerHTML='📷'">
                                 {% else %}
                                 -
                                 {% endif %}
@@ -228,11 +235,13 @@
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Фото подъезда</label>
-                            <input type="file" class="form-control" id="elevatorEntrancePhoto" accept="image/*">
+                            <input type="file" class="form-control" id="elevatorEntrancePhoto" accept="image/*" onchange="handlePhotoSelect(this)">
                             <input type="hidden" id="elevatorEntrancePhotoPath" name="key_photo">
-                            {% if current_photo %}
-                            <img src="{{ current_photo }}" style="width: 100px; margin-top: 10px; border-radius: 4px;">
-                            {% endif %}
+                            <div id="currentPhotoPreview" style="margin-top: 10px;"></div>
+                            <div id="photoUploadStatus" style="margin-top: 5px;"></div>
+                            <button type="button" class="btn btn-sm btn-outline-secondary mt-2" onclick="applyPhotoToAddress()">
+                                <i class="bi bi-copy"></i> Применить фото ко всем лифтам этого адреса
+                            </button>
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Тип лифта</label>
@@ -373,15 +382,70 @@
                 console.error('Ошибка загрузки механиков лифта:', error);
             }
         }
-
-        // Открыть модальное окно для добавления
-        async function openAddModal() {
-            isEditMode = false;
-            document.getElementById('modalTitle').textContent = 'Добавить лифт';
-            document.getElementById('elevatorForm').reset();
-            document.getElementById('originalId').value = '';
-            await loadMechanicsList();
-            modal.show();
+        
+        // Обработка выбора фото
+        async function handlePhotoSelect(input) {
+            const statusEl = document.getElementById('photoUploadStatus');
+            if (input.files.length > 0) {
+                statusEl.innerHTML = '<span class="text-warning">⏳ Загрузка...</span>';
+                
+                const uploadData = new FormData();
+                uploadData.append('photo', input.files[0]);
+                
+                try {
+                    const response = await fetch('/api/elevators/upload-photo', {
+                        method: 'POST',
+                        body: uploadData
+                    });
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        document.getElementById('elevatorEntrancePhotoPath').value = result.path;
+                        statusEl.innerHTML = '<span class="text-success">✓ Фото загружено</span>';
+                    } else {
+                        statusEl.innerHTML = '<span class="text-danger">✗ Ошибка загрузки</span>';
+                    }
+                } catch(e) {
+                    statusEl.innerHTML = '<span class="text-danger">✗ Ошибка: ' + e.message + '</span>';
+                }
+            }
+        }
+        
+        // Применить фото ко всем лифтам этого адреса
+        async function applyPhotoToAddress() {
+            const address = document.getElementById('elevatorAddress').value;
+            const photoPath = document.getElementById('elevatorEntrancePhotoPath').value;
+            
+            if (!address) {
+                showError('Укажите адрес');
+                return;
+            }
+            if (!photoPath) {
+                showError('Сначала загрузите фото');
+                return;
+            }
+            
+            if (!confirm(`Применить это фото ко всем лифтам по адресу "${address}"?`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/elevators/apply-photo-to-address', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({address: address, photoPath: photoPath})
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert(`Фото применено к ${result.count} лифтам`);
+                    location.reload();
+                } else {
+                    showError(result.error || 'Ошибка');
+                }
+            } catch(e) {
+                showError('Ошибка: ' + e.message);
+            }
         }
 
         // Открыть модальное окно для редактирования
@@ -398,8 +462,21 @@
             if (!statusEl.value) statusEl.value = 'active';
             document.getElementById('serialNumber').value = serialNumber || '';
             
-            // Показать текущее фото ключей
+            // Показать текущее фото
             document.getElementById('elevatorEntrancePhotoPath').value = entrancePhoto || '';
+            const photoPreview = document.getElementById('currentPhotoPreview');
+            if (entrancePhoto) {
+                // Формируем правильный путь
+                let photoSrc = entrancePhoto;
+                if (photoSrc.startsWith('/uploads/')) {
+                    photoSrc = '/static' + photoSrc;
+                } else if (!photoSrc.startsWith('/static')) {
+                    photoSrc = '/static/uploads/entrances/' + photoSrc;
+                }
+                photoPreview.innerHTML = `<img src="${photoSrc}" style="width: 100px; border-radius: 4px;" onerror="this.parentElement.innerHTML='📷'">`;
+            } else {
+                photoPreview.innerHTML = '';
+            }
             
             await loadMechanicsList();
             await loadElevatorMechanics(id);

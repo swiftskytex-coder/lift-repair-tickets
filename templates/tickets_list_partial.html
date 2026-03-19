@@ -52,21 +52,60 @@
             {% endif %}
         </div>
         <!-- Фото и работы -->
-        {% if ticket.photos or ticket.videos or ticket.last_work %}
+        {% if ticket.photos|default([]) or ticket.videos|default([]) %}
         <div class="col-4">
-            <!-- Бейджики -->
-            <div class="mb-1">
-                {% if ticket.photos %}
-                <span class="badge bg-primary me-1" style="font-size: 14px;">📷 {{ ticket.photos|length }}</span>
+            <!-- Превью фото/видео -->
+            <div style="display: flex; gap: 4px; overflow-x: auto; max-height: 60px;">
+                {% for photo in (ticket.photos|default([]))[:3] %}
+                {% set photo_src = photo %}
+                {% if '/uploads/' in photo_src %}
+                {% set photo_src = '/static' + photo_src %}
+                {% elif 'uploads/' in photo_src %}
+                {% set photo_src = '/static/uploads/' + photo_src.replace('uploads/', '') %}
+                {% elif not photo_src.startswith('/static') %}
+                {% set photo_src = '/static/uploads/' + photo_src %}
                 {% endif %}
-                {% if ticket.videos %}
-                <span class="badge bg-danger" style="font-size: 14px;">🎥 {{ ticket.videos|length }}</span>
+                <img src="{{ photo_src }}" style="width: 50px; height: 50px; object-fit: cover; border-radius: 4px; flex-shrink: 0;"
+                     onerror="this.style.display='none'">
+                {% endfor %}
+                {% if (ticket.photos|default([]))|length > 3 %}
+                <span class="badge bg-secondary" style="flex-shrink: 0; align-self: center;">+{{ (ticket.photos|default([]))|length - 3 }}</span>
                 {% endif %}
+                {% for video in (ticket.videos|default([]))[:2] %}
+                {% set video_parts = video.split('|') %}
+                {% set video_src = video_parts[0] %}
+                {% set thumb_src = video_parts[1] if video_parts|length > 1 else '' %}
+                {% if '/uploads/' in video_src %}
+                {% set video_src = '/static' + video_src %}
+                {% elif 'uploads/' in video_src %}
+                {% set video_src = '/static/uploads/' + video_src.replace('uploads/', '') %}
+                {% else %}
+                {% set video_src = '/static/uploads/' + video_src %}
+                {% endif %}
+                {% if thumb_src and '/uploads/' in thumb_src %}
+                {% set thumb_src = '/static' + thumb_src %}
+                {% elif thumb_src and 'uploads/' in thumb_src %}
+                {% set thumb_src = '/static/uploads/' + thumb_src.replace('uploads/', '') %}
+                {% elif thumb_src %}
+                {% set thumb_src = '/static/uploads/' + thumb_src %}
+                {% endif %}
+                {% if thumb_src %}
+                <img src="{{ thumb_src }}" style="width: 50px; height: 50px; object-fit: cover; border-radius: 4px; flex-shrink: 0;"
+                     onerror="this.parentElement.innerHTML='<div style=\\'width:50px;height:50px;background:#374151;border-radius:4px;display:flex;align-items:center;justify-content:center;\\'><span style=\\'font-size:20px;\\'>🎥</span></div>'">
+                {% else %}
+                <div style="width: 50px; height: 50px; background: #374151; border-radius: 4px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                    <span style="font-size: 20px;">🎥</span>
+                </div>
+                {% endif %}
+                {% endfor %}
             </div>
-            <!-- Текст отчета -->
             {% if ticket.last_work %}
             <div class="text-white mt-1" style="font-size: 11px;">🔧 {{ ticket.last_work[:60] }}{% if ticket.last_work|length > 60 %}...{% endif %}</div>
             {% endif %}
+        </div>
+        {% elif ticket.last_work %}
+        <div class="col-4">
+            <div class="text-white" style="font-size: 11px;">🔧 {{ ticket.last_work[:80] }}{% if ticket.last_work|length > 80 %}...{% endif %}</div>
         </div>
         {% endif %}
     </div>

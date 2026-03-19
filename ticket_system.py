@@ -30,7 +30,7 @@ def format_samara(dt):
         return dt.astimezone(SAMARA_TZ).strftime('%d.%m %H:%M')
     return ''
 
-app = Flask(__name__, template_folder='templates', static_folder='uploads', static_url_path='/uploads')
+app = Flask(__name__, template_folder='templates', static_folder='static', static_url_path='/static')
 app.config['JSON_AS_cii'] = False
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 app.jinja_env.auto_reload = True
@@ -502,6 +502,7 @@ def tickets_list():
                     (ticket_id,)
                 )
                 photos = [row[0].replace('[ФОТО] ', '') for row in cursor.fetchall()]
+                # Путь уже содержит uploads/
                 if photos:
                     ticket['photos'] = photos
                 # Работы
@@ -1691,23 +1692,90 @@ def api_upload_elevator_photo():
     if photo.filename == '':
         return jsonify({'success': False, 'error': 'No photo selected'}), 400
     
-    # Создаем директорию для фото подъездов
     import os
+    from PIL import Image
+    import uuid
+    
     upload_dir = 'static/uploads/entrances'
     os.makedirs(upload_dir, exist_ok=True)
     
-    # Сохраняем файл
-    import uuid
-    ext = os.path.splitext(photo.filename)[1] if photo.filename else '.jpg'
+    ext = os.path.splitext(photo.filename)[1].lower() if photo.filename else '.jpg'
+    if ext not in ['.jpg', '.jpeg', '.png']:
+        ext = '.jpg'
+    
     filename = f"{uuid.uuid4()}{ext}"
     filepath = os.path.join(upload_dir, filename)
-    photo.save(filepath)
     
-    # Возвращаем путь для Flask static (uploads folder -> /uploads prefix)
+    try:
+        img = Image.open(photo)
+        
+        # Учитываем ориентацию из EXIF
+        try:
+            exif = img.getexif()
+            orientation = exif.get(0x0112)  # Orientation tag
+            if orientation == 2:
+                img = img.transpose(Image.FLIP_LEFT_RIGHT)
+            elif orientation == 3:
+                img = img.rotate(180, expand=True)
+            elif orientation == 4:
+                img = img.transpose(Image.FLIP_TOP_BOTTOM)
+            elif orientation == 5:
+                img = img.transpose(Image.FLIP_LEFT_RIGHT).rotate(90, expand=True)
+            elif orientation == 6:
+                img = img.rotate(270, expand=True)
+            elif orientation == 7:
+                img = img.transpose(Image.FLIP_LEFT_RIGHT).rotate(270, expand=True)
+            elif orientation == 8:
+                img = img.rotate(90, expand=True)
+        except Exception:
+            pass
+        
+        max_size = 1200
+        if img.width > max_size or img.height > max_size:
+            ratio = min(max_size / img.width, max_size / img.height)
+            new_width = int(img.width * ratio)
+            new_height = int(img.height * ratio)
+            img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        
+        if img.mode in ('RGBA', 'P'):
+            img = img.convert('RGB')
+        
+        img.save(filepath, 'JPEG', quality=85, optimize=True)
+    except Exception as e:
+        print(f"Error compressing image: {e}")
+        photo.save(filepath)
+    
     return jsonify({
         'success': True,
-        'path': f'/uploads/entrances/{filename}'
+        'path': f'/static/uploads/entrances/{filename}'
     })
+
+
+@app.route('/api/elevators/apply-photo-to-address', methods=['POST'])
+def api_apply_photo_to_address():
+    """Применить фото ко всем лифтам с одинаковым адресом"""
+    data = request.get_json()
+    
+    if not data or not data.get('address') or not data.get('photoPath'):
+        return jsonify({'success': False, 'error': 'Не указан адрес или фото'}), 400
+    
+    address = data['address']
+    photo_path = data['photoPath']
+    
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE elevators SET key_photo = ? WHERE address = ?",
+            (photo_path, address)
+        )
+        count = cursor.rowcount
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True, 'count': count})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 # ═══════════════════════════════════════════════════════════════

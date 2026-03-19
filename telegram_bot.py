@@ -10,6 +10,7 @@ import os
 import asyncio
 import json
 import requests
+import subprocess
 from datetime import datetime, timedelta
 from PIL import Image
 from io import BytesIO
@@ -24,7 +25,7 @@ except ImportError:
 
 # Импорты для Telegram Bot
 try:
-    from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot, ReplyKeyboardMarkup, KeyboardButton
+    from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
     from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 except ImportError:
     print("❌ Установите: pip install python-telegram-bot")
@@ -47,6 +48,28 @@ def create_key_thumbnail(image_path, size=(240, 80)):
     """Создаёт узкое превью для фото подъезда (горизонтальная полоска) с центральным кропом"""
     try:
         img = Image.open(image_path)
+        
+        # Учитываем ориентацию из EXIF
+        try:
+            exif = img.getexif()
+            orientation = exif.get(0x0112)  # Orientation tag
+            if orientation == 2:
+                img = img.transpose(Image.FLIP_LEFT_RIGHT)
+            elif orientation == 3:
+                img = img.rotate(180, expand=True)
+            elif orientation == 4:
+                img = img.transpose(Image.FLIP_TOP_BOTTOM)
+            elif orientation == 5:
+                img = img.transpose(Image.FLIP_LEFT_RIGHT).rotate(90, expand=True)
+            elif orientation == 6:
+                img = img.rotate(270, expand=True)
+            elif orientation == 7:
+                img = img.transpose(Image.FLIP_LEFT_RIGHT).rotate(270, expand=True)
+            elif orientation == 8:
+                img = img.rotate(90, expand=True)
+        except Exception:
+            pass
+        
         target_w, target_h = size
         orig_w, orig_h = img.size
         
@@ -60,7 +83,7 @@ def create_key_thumbnail(image_path, size=(240, 80)):
         # Обрезаем центр
         img = img.crop((left, top, right, bottom))
         
-        # Теперь растягиваем/сжимаем до нужного размера (Telegram сам отобразит правильно)
+        # Теперь растягиваем/сжимаем до нужного размера
         img = img.resize(size, Image.Resampling.LANCZOS)
         
         buffer = BytesIO()
@@ -69,6 +92,26 @@ def create_key_thumbnail(image_path, size=(240, 80)):
         return buffer
     except Exception as e:
         print(f"⚠️ Ошибка создания миниатюры: {e}")
+        return None
+
+
+def create_video_thumbnail(video_path, output_path, size=(100, 100)):
+    """Создаёт превью из видео с помощью ffmpeg"""
+    try:
+        cmd = [
+            'ffmpeg', '-y', '-i', video_path,
+            '-ss', '00:00:01',  # Кадр на 1 секунде
+            '-vframes', '1',
+            '-vf', f'scale={size[0]}:{size[1]}:force_original_aspect_ratio=decrease,pad={size[0]}:{size[1]}:(ow-iw)/2:(oh-ih)/2',
+            '-q:v', '3',
+            output_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, timeout=30)
+        if result.returncode == 0 and os.path.exists(output_path):
+            return output_path
+        return None
+    except Exception as e:
+        print(f"⚠️ Ошибка создания превью видео: {e}")
         return None
 
 
@@ -743,8 +786,13 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Скачиваем
     await file.download_to_drive(file_path)
     
-    # Сохраняем путь в БД
-    db.add_comment(ticket_id, 'mechanic', f'[ВИДЕО] {file_path}')
+    # Создаём превью видео
+    thumb_path = file_path.replace('.mp4', '_thumb.jpg')
+    create_video_thumbnail(file_path, thumb_path, size=(100, 100))
+    
+    # Сохраняем путь в БД (видео + превью через |)
+    thumb_comment = f'[ВИДЕО] {file_path}|{thumb_path}' if os.path.exists(thumb_path) else f'[ВИДЕО] {file_path}'
+    db.add_comment(ticket_id, 'mechanic', thumb_comment)
     
     # Увеличиваем счётчик
     if 'video_count' not in user_data[chat_id]:
@@ -942,7 +990,7 @@ async def my_lifts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         message = "ℹ️ За вами не закреплены лифты"
     
-    await update.message.reply_text(message, reply_markup=get_main_keyboard())
+    await update.message.reply_text(message)
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1196,23 +1244,22 @@ async def handle_text_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE
     elif text == "✅ Завершить заявку":
         await complete_ticket(update, context)
     else:
-        # Если это не кнопка меню, обрабатываем как номер телефона
+        # Обрабатываем как номер телефона
         await handle_phone(update, context)
 
 
 async def post_init(application):
     """Инициализация после запуска бота"""
     # Устанавливаем команды меню
-    # Команды меню скрыты - используем только кнопки
-    # commands = [
-    #     ("start", "Регистрация в боте"),
-    #     ("help", "Показать справку"),
-    #     ("my_lifts", "Мои лифты"),
-    #     ("my_tickets", "Мои заявки"),
-    #     ("complete", "Завершить заявку")
-    # ]
-    # await application.bot.set_my_commands(commands)
-    # print("✅ Команды меню установлены")
+    commands = [
+        ("start", "Регистрация в боте"),
+        ("help", "Показать справку"),
+        ("my_lifts", "Мои лифты"),
+        ("my_tickets", "Мои заявки"),
+        ("complete", "Завершить заявку")
+    ]
+    await application.bot.set_my_commands(commands)
+    print("✅ Команды меню установлены")
 
 
 def main():
@@ -1228,6 +1275,8 @@ def main():
     # Обработчики команд
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("stop", lambda u, c: u.message.reply_text("Меню скрыто", reply_markup=ReplyKeyboardRemove())))
+    application.add_handler(CommandHandler("menu", lambda u, c: u.message.reply_text("Используйте кнопки в сообщениях", reply_markup=ReplyKeyboardRemove())))
     application.add_handler(CommandHandler("complete", complete_ticket))
     application.add_handler(CommandHandler("done", complete_ticket))
     application.add_handler(CommandHandler("skip", skip_photos))

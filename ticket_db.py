@@ -116,6 +116,12 @@ class TicketDatabase:
             except sqlite3.OperationalError:
                 pass  # Колонка уже существует
             
+            # Миграция: добавляем фото подъезда
+            try:
+                cursor.execute('ALTER TABLE elevators ADD COLUMN key_photo TEXT')
+            except sqlite3.OperationalError:
+                pass  # Колонка уже существует
+            
             # Таблица механиков
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS mechanics (
@@ -597,8 +603,8 @@ class TicketDatabase:
             cursor = conn.cursor()
             cursor.execute('''
                 INSERT OR REPLACE INTO elevators 
-                (elevator_id, serial_number, address, entrance, elevator_type, mechanic, description, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (elevator_id, serial_number, address, entrance, elevator_type, mechanic, description, status, key_photo)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 data.get('elevator_id'),
                 data.get('serial_number'),
@@ -607,7 +613,8 @@ class TicketDatabase:
                 data.get('elevator_type', 'пассажирский'),
                 data.get('mechanic'),
                 data.get('description', ''),
-                data.get('status', 'active')
+                data.get('status', 'active'),
+                data.get('key_photo')
             ))
             conn.commit()
             return cursor.lastrowid

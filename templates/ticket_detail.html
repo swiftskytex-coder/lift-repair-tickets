@@ -468,13 +468,21 @@
                             </div>
                             <div class="row g-2">
                                 {% for photo in photo_comments %}
-                                {% set photo_path = '/' + photo.text.replace('[ФОТО] ', '') %}
+                                {% set raw_path = photo.text.replace('[ФОТО] ', '') %}
+                                {% if '/uploads/' in raw_path %}
+                                {% set photo_path = '/static' + raw_path %}
+                                {% elif 'uploads/' in raw_path %}
+                                {% set photo_path = '/static/uploads/' + raw_path.replace('uploads/', '') %}
+                                {% else %}
+                                {% set photo_path = '/static/uploads/' + raw_path %}
+                                {% endif %}
                                 <div class="col-6">
                                     <a href="{{ photo_path }}" target="_blank">
                                         <img src="{{ photo_path }}" 
                                              class="img-fluid rounded" 
                                              style="height: 120px; width: 100%; object-fit: cover; cursor: pointer;"
-                                             alt="Фото отчёт">
+                                             alt="Фото отчёт"
+                                             onerror="this.parentElement.innerHTML='<div style=\\'height:120px;background:#374151;display:flex;align-items:center;justify-content:center;\\'>📷</div>'">
                                     </a>
                                 </div>
                                 {% endfor %}
@@ -490,7 +498,15 @@
                             </div>
                             <div class="row g-2 mb-3">
                                 {% for video in video_comments %}
-                                {% set video_path = '/' + video.text.replace('[ВИДЕО] ', '') %}
+                                {% set video_parts = video.text.replace('[ВИДЕО] ', '').split('|') %}
+                                {% set raw_path = video_parts[0] %}
+                                {% if '/uploads/' in raw_path %}
+                                {% set video_path = '/static' + raw_path %}
+                                {% elif 'uploads/' in raw_path %}
+                                {% set video_path = '/static/uploads/' + raw_path.replace('uploads/', '') %}
+                                {% else %}
+                                {% set video_path = '/static/uploads/' + raw_path %}
+                                {% endif %}
                                 <div class="col-12">
                                     <video controls style="width: 100%; max-height: 200px; border-radius: 8px;">
                                         <source src="{{ video_path }}" type="video/mp4">
