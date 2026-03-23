@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#3b82f6">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="description" content="Мобильная версия для механиков">
+    <title>Заявки Лифт</title>
+    
+    <link rel="manifest" href="/static/pwa/manifest.json">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link rel="apple-touch-icon" href="/static/pwa/icon-192.png">
+    
+    <style>
+        :root {
+            --bg-dark: #111827;
+            --bg-card: #1f2937;
+            --bg-hover: #374151;
+            --text-primary: #f9fafb;
+            --text-muted: #9ca3af;
+            --accent-blue: #3b82f6;
+            --accent-green: #22c55e;
+            --accent-red: #ef4444;
+            --accent-yellow: #eab308;
+        }
+        
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        
+        /* Header */
+        .app-header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: var(--bg-card);
+            padding: 12px 16px;
+            z-index: 100;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #374151;
+        }
+        
+        .app-title {
+            font-size: 18px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            border: none;
+            background: var(--bg-hover);
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .btn-icon:active {
+            transform: scale(0.95);
+        }
+        
+        /* Main content */
+        .app-content {
+            padding: 80px 12px 100px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        
+        /* Filters */
+        .filter-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            overflow-x: auto;
+            padding-bottom: 8px;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        .filter-tab {
+            flex-shrink: 0;
+            padding: 10px 16px;
+            border-radius: 20px;
+            border: none;
+            background: var(--bg-card);
+            color: var(--text-muted);
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .filter-tab.active {
+            background: var(--accent-blue);
+            color: white;
+        }
+        
+        .filter-tab:active {
+            transform: scale(0.95);
+        }
+        
+        /* Ticket Card */
+        .ticket-card {
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+        }
+        
+        .ticket-card:active {
+            transform: scale(0.98);
+            background: var(--bg-hover);
+        }
+        
+        .ticket-card.status-new {
+            border-left: 4px solid var(--accent-blue);
+        }
+        
+        .ticket-card.status-work {
+            border-left: 4px solid var(--accent-yellow);
+        }
+        
+        .ticket-card.status-done {
+            border-left: 4px solid var(--accent-green);
+            opacity: 0.7;
+        }
+        
+        .ticket-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 8px;
+        }
+        
+        .ticket-number {
+            font-size: 12px;
+            background: var(--accent-blue);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-weight: 600;
+        }
+        
+        .ticket-time {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        
+        .ticket-address {
+            font-size: 15px;
+            font-weight: 500;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .ticket-problem {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+            line-height: 1.4;
+        }
+        
+        .ticket-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .ticket-badges {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        
+        .badge-priority {
+            font-size: 11px;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-weight: 500;
+        }
+        
+        .badge-priority.urgent {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--accent-red);
+        }
+        
+        .badge-priority.normal {
+            background: rgba(156, 163, 175, 0.2);
+            color: var(--text-muted);
+        }
+        
+        .badge-priority.low {
+            background: rgba(59, 130, 246, 0.2);
+            color: var(--accent-blue);
+        }
+        
+        .badge-priority.high {
+            background: rgba(234, 179, 8, 0.2);
+            color: var(--accent-yellow);
+        }
+        
+        .ticket-photo {
+            width: 50px;
+            height: 50px;
+            border-radius: 8px;
+            object-fit: cover;
+        }
+        
+        .ticket-mechanics {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        
+        /* Timer */
+        .ticket-timer {
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .ticket-timer.warning {
+            color: var(--accent-yellow);
+        }
+        
+        .ticket-timer.danger {
+            color: var(--accent-red);
+        }
+        
+        /* Bottom Nav */
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: var(--bg-card);
+            display: flex;
+            justify-content: space-around;
+            padding: 12px 16px;
+            border-top: 1px solid #374151;
+            z-index: 100;
+        }
+        
+        .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 11px;
+            cursor: pointer;
+            padding: 8px 16px;
+            border-radius: 12px;
+            transition: all 0.2s;
+        }
+        
+        .nav-item.active {
+            color: var(--accent-blue);
+            background: rgba(59, 130, 246, 0.1);
+        }
+        
+        .nav-item i {
+            font-size: 22px;
+        }
+        
+        /* Pull to refresh */
+        .refresh-indicator {
+            text-align: center;
+            padding: 16px;
+            color: var(--text-muted);
+            font-size: 14px;
+            display: none;
+        }
+        
+        .refresh-indicator.show {
+            display: block;
+        }
+        
+        /* Loading */
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 40px;
+        }
+        
+        .spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid var(--bg-hover);
+            border-top-color: var(--accent-blue);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+        
+        .empty-state i {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+        
+        /* Offline banner */
+        .offline-banner {
+            background: var(--accent-yellow);
+            color: #000;
+            text-align: center;
+            padding: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            display: none;
+        }
+        
+        .offline-banner.show {
+            display: block;
+        }
+        
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 200;
+            display: none;
+            align-items: flex-end;
+            justify-content: center;
+        }
+        
+        .modal-overlay.show {
+            display: flex;
+        }
+        
+        .modal-content {
+            background: var(--bg-card);
+            width: 100%;
+            max-width: 500px;
+            border-radius: 20px 20px 0 0;
+            padding: 20px;
+            max-height: 90vh;
+            overflow-y: auto;
+            animation: slideUp 0.3s ease;
+        }
+        
+        @keyframes slideUp {
+            from { transform: translateY(100%); }
+            to { transform: translateY(0); }
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        
+        .modal-title {
+            font-size: 18px;
+            font-weight: 600;
+        }
+        
+        /* Actions */
+        .action-btn {
+            width: 100%;
+            padding: 16px;
+            border-radius: 12px;
+            border: none;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-bottom: 12px;
+            transition: all 0.2s;
+        }
+        
+        .action-btn:active {
+            transform: scale(0.98);
+        }
+        
+        .action-btn.primary {
+            background: var(--accent-blue);
+            color: white;
+        }
+        
+        .action-btn.success {
+            background: var(--accent-green);
+            color: white;
+        }
+        
+        .action-btn.secondary {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+        
+        /* Photo upload */
+        .photo-upload {
+            border: 2px dashed var(--bg-hover);
+            border-radius: 12px;
+            padding: 30px;
+            text-align: center;
+            cursor: pointer;
+            margin-bottom: 16px;
+        }
+        
+        .photo-upload:active {
+            border-color: var(--accent-blue);
+        }
+        
+        .photo-preview {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+        
+        .photo-preview img {
+            width: 100%;
+            aspect-ratio: 1;
+            object-fit: cover;
+            border-radius: 8px;
+        }
+        
+        /* Status indicator */
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        
+        .status-dot.online {
+            background: var(--accent-green);
+        }
+        
+        .status-dot.offline {
+            background: var(--accent-red);
+        }
+    </style>
+</head>
+<body>
+    <div class="offline-banner" id="offlineBanner">
+        <i class="bi bi-wifi-off"></i> Нет соединения - работа в офлайн режиме
+    </div>
+    
+    <header class="app-header">
+        <div class="app-title">
+            <i class="bi bi-building" style="color: var(--accent-blue);"></i>
+            Заявки
+            <span class="status-dot online" id="statusDot"></span>
+        </div>
+        <button class="btn-icon" onclick="refreshTickets()">
+            <i class="bi bi-arrow-clockwise"></i>
+        </button>
+    </header>
+    
+    <main class="app-content" id="ticketList">
+        <div class="refresh-indicator" id="refreshIndicator">
+            <div class="spinner"></div>
+            Загрузка...
+        </div>
+        
+        <div class="filter-tabs" id="filterTabs">
+            <button class="filter-tab active" data-filter="new">
+                Новые <span class="badge bg-light text-dark" id="countNew">0</span>
+            </button>
+            <button class="filter-tab" data-filter="work">
+                В работе <span class="badge bg-light text-dark" id="countWork">0</span>
+            </button>
+            <button class="filter-tab" data-filter="done">
+                Выполнено <span class="badge bg-light text-dark" id="countDone">0</span>
+            </button>
+            <button class="filter-tab" data-filter="all">
+                Все
+            </button>
+        </div>
+        
+        <div id="ticketsContainer"></div>
+    </main>
+    
+    <nav class="bottom-nav">
+        <button class="nav-item active" onclick="setFilter('new')">
+            <i class="bi bi-inbox"></i>
+            Заявки
+        </button>
+        <button class="nav-item" onclick="showMyLifts()">
+            <i class="bi bi-building"></i>
+            Мои лифты
+        </button>
+        <button class="nav-item" onclick="showHelp()">
+            <i class="bi bi-question-circle"></i>
+            Помощь
+        </button>
+        <button class="nav-item" onclick="showProfile()">
+            <i class="bi bi-person-circle"></i>
+            Профиль
+        </button>
+    </nav>
+    
+    <!-- Ticket Detail Modal -->
+    <div class="modal-overlay" id="ticketModal">
+        <div class="modal-content" id="ticketModalContent">
+            <div class="modal-header">
+                <div class="modal-title">Заявка</div>
+                <button class="btn-icon" onclick="closeModal()">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+            <div id="ticketDetail"></div>
+        </div>
+    </div>
+
+    <script>
+        // State
+        let currentFilter = 'new';
+        let tickets = [];
+        let isLoading = false;
+        
+        // Service Worker Registration
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/pwa/sw.js')
+                .then(reg => console.log('SW registered'))
+                .catch(err => console.error('SW registration failed:', err));
+        }
+        
+        // Online/Offline detection
+        function updateOnlineStatus() {
+            const dot = document.getElementById('statusDot');
+            const banner = document.getElementById('offlineBanner');
+            if (navigator.onLine) {
+                dot.classList.remove('offline');
+                dot.classList.add('online');
+                banner.classList.remove('show');
+            } else {
+                dot.classList.remove('online');
+                dot.classList.add('offline');
+                banner.classList.add('show');
+            }
+        }
+        
+        window.addEventListener('online', updateOnlineStatus);
+        window.addEventListener('offline', updateOnlineStatus);
+        updateOnlineStatus();
+        
+        // Load tickets
+        async function loadTickets() {
+            if (isLoading) return;
+            isLoading = true;
+            document.getElementById('refreshIndicator').classList.add('show');
+            
+            try {
+                const response = await fetch('/api/tickets?status=' + currentFilter);
+                const data = await response.json();
+                tickets = data.tickets || [];
+                renderTickets();
+                updateCounts(data.tickets || []);
+            } catch (error) {
+                console.error('Error loading tickets:', error);
+                // Try cache
+                const cached = localStorage.getItem('cached_tickets');
+                if (cached) {
+                    tickets = JSON.parse(cached);
+                    renderTickets();
+                }
+            } finally {
+                isLoading = false;
+                document.getElementById('refreshIndicator').classList.remove('show');
+            }
+        }
+        
+        // Render tickets
+        function renderTickets() {
+            const container = document.getElementById('ticketsContainer');
+            
+            if (tickets.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <i class="bi bi-inbox"></i>
+                        <p>Заявок нет</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = tickets.map(ticket => {
+                const statusClass = ticket.status === 'новая' ? 'status-new' : 
+                                   ticket.status === 'в работе' ? 'status-work' : 'status-done';
+                const priorityClass = ticket.priority === 'срочный' ? 'urgent' : 
+                                     ticket.priority === 'высокий' ? 'high' : 
+                                     ticket.priority === 'низкий' ? 'low' : 'normal';
+                
+                return `
+                    <div class="ticket-card ${statusClass}" onclick="openTicket(${ticket.id})">
+                        <div class="ticket-header">
+                            <span class="ticket-number">№ ${ticket.elevator_id || ticket.id}</span>
+                            <span class="ticket-time">${formatTime(ticket.created_at)}</span>
+                        </div>
+                        <div class="ticket-address">
+                            <i class="bi bi-geo-alt"></i>
+                            ${ticket.address}
+                        </div>
+                        ${ticket.problem_description ? `
+                            <div class="ticket-problem">${ticket.problem_description.substring(0, 100)}</div>
+                        ` : ''}
+                        <div class="ticket-footer">
+                            <div class="ticket-badges">
+                                <span class="badge-priority ${priorityClass}">${ticket.priority || 'обычный'}</span>
+                                ${ticket.photos && ticket.photos.length > 0 ? `
+                                    <span class="badge-priority" style="background: rgba(59,130,246,0.2);">
+                                        <i class="bi bi-camera"></i> ${ticket.photos.length}
+                                    </span>
+                                ` : ''}
+                            </div>
+                            ${ticket.mechanics_list && ticket.mechanics_list.length > 0 ? `
+                                <div class="ticket-mechanics">
+                                    ${ticket.mechanics_list.map(m => m.name.split()[0]).join(', ')}
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            // Cache tickets
+            localStorage.setItem('cached_tickets', JSON.stringify(tickets));
+        }
+        
+        // Format time
+        function formatTime(dateStr) {
+            if (!dateStr) return '';
+            const date = new Date(dateStr);
+            return date.toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'});
+        }
+        
+        // Update counts
+        function updateCounts(allTickets) {
+            const newCount = allTickets.filter(t => t.status === 'новая').length;
+            const workCount = allTickets.filter(t => t.status === 'в работе').length;
+            const doneCount = allTickets.filter(t => t.status === 'выполнена').length;
+            
+            document.getElementById('countNew').textContent = newCount;
+            document.getElementById('countWork').textContent = workCount;
+            document.getElementById('countDone').textContent = doneCount;
+        }
+        
+        // Set filter
+        function setFilter(filter) {
+            currentFilter = filter;
+            
+            // Update tabs
+            document.querySelectorAll('.filter-tab').forEach(tab => {
+                tab.classList.toggle('active', tab.dataset.filter === filter);
+            });
+            
+            // Update nav
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.classList.toggle('active', item.getAttribute('onclick')?.includes('setFilter'));
+            });
+            
+            loadTickets();
+        }
+        
+        // Open ticket
+        async function openTicket(id) {
+            const ticket = tickets.find(t => t.id === id);
+            if (!ticket) return;
+            
+            const modal = document.getElementById('ticketModal');
+            const detail = document.getElementById('ticketDetail');
+            
+            const statusBtn = ticket.status === 'новая' ? 
+                `<button class="action-btn primary" onclick="acceptTicket(${ticket.id})">
+                    <i class="bi bi-check-circle"></i> Принять в работу
+                </button>` :
+                ticket.status === 'в работе' ?
+                `<button class="action-btn success" onclick="completeTicket(${ticket.id})">
+                    <i class="bi bi-check-all"></i> Завершить
+                </button>` : '';
+            
+            detail.innerHTML = `
+                <div style="margin-bottom: 16px;">
+                    <span class="ticket-number" style="margin-right: 8px;">№ ${ticket.elevator_id || ticket.id}</span>
+                    <span class="badge-priority ${ticket.priority === 'срочный' ? 'urgent' : 'normal'}">
+                        ${ticket.priority || 'обычный'}
+                    </span>
+                </div>
+                
+                <div style="margin-bottom: 16px;">
+                    <div style="font-size: 18px; font-weight: 600; margin-bottom: 8px;">
+                        <i class="bi bi-geo-alt"></i> ${ticket.address}
+                    </div>
+                    <div style="color: var(--text-muted); font-size: 13px;">
+                        ${formatTime(ticket.created_at)}
+                    </div>
+                </div>
+                
+                ${ticket.problem_description ? `
+                    <div style="margin-bottom: 16px; padding: 12px; background: var(--bg-hover); border-radius: 8px;">
+                        <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Описание:</div>
+                        ${ticket.problem_description}
+                    </div>
+                ` : ''}
+                
+                ${ticket.photos && ticket.photos.length > 0 ? `
+                    <div style="margin-bottom: 16px;">
+                        <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">Фото:</div>
+                        <div class="photo-preview">
+                            ${ticket.photos.map(p => {
+                                let src = p;
+                                if (src.includes('/uploads/')) src = '/static' + src;
+                                return `<img src="${src}" alt="Фото">`;
+                            }).join('')}
+                        </div>
+                    </div>
+                ` : ''}
+                
+                ${ticket.mechanics_list && ticket.mechanics_list.length > 0 ? `
+                    <div style="margin-bottom: 16px; font-size: 13px; color: var(--text-muted);">
+                        <i class="bi bi-people"></i> ${ticket.mechanics_list.map(m => m.name).join(', ')}
+                    </div>
+                ` : ''}
+                
+                ${statusBtn}
+                
+                <button class="action-btn secondary" onclick="closeModal()">
+                    Закрыть
+                </button>
+            `;
+            
+            modal.classList.add('show');
+        }
+        
+        // Close modal
+        function closeModal() {
+            document.getElementById('ticketModal').classList.remove('show');
+        }
+        
+        // Accept ticket
+        async function acceptTicket(id) {
+            try {
+                const response = await fetch(`/api/tickets/${id}/accept`, {
+                    method: 'POST'
+                });
+                if (response.ok) {
+                    closeModal();
+                    loadTickets();
+                    if ('Notification' in window && Notification.permission === 'granted') {
+                        navigator.serviceWorker.ready.then(sw => {
+                            sw.showNotification('Заявка принята', {
+                                body: 'Заявка успешно принята в работу',
+                                icon: '/static/pwa/icon-192.png'
+                            });
+                        });
+                    }
+                }
+            } catch (error) {
+                console.error('Error accepting ticket:', error);
+                alert('Ошибка при принятии заявки');
+            }
+        }
+        
+        // Complete ticket
+        async function completeTicket(id) {
+            closeModal();
+            
+            // For now, show a simple completion
+            try {
+                await fetch(`/api/tickets/${id}/complete`, {
+                    method: 'POST'
+                });
+                loadTickets();
+            } catch (error) {
+                console.error('Error completing ticket:', error);
+            }
+        }
+        
+        // Refresh
+        function refreshTickets() {
+            loadTickets();
+        }
+        
+        // Placeholder functions
+        function showMyLifts() {
+            alert('Раздел "Мои лифты" в разработке');
+        }
+        
+        function showHelp() {
+            alert('Помощь: Обратитесь к администратору системы');
+        }
+        
+        function showProfile() {
+            alert('Профиль механика');
+        }
+        
+        // Request notification permission
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
+        
+        // Initial load
+        loadTickets();
+        
+        // Auto refresh
+        setInterval(loadTickets, 30000);
+        
+        // Filter tabs click
+        document.querySelectorAll('.filter-tab').forEach(tab => {
+            tab.addEventListener('click', () => setFilter(tab.dataset.filter));
+        });
+        
+        // Close modal on overlay click
+        document.getElementById('ticketModal').addEventListener('click', (e) => {
+            if (e.target.id === 'ticketModal') closeModal();
+        });
+    </script>
+</body>
+</html>

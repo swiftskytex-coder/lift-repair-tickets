@@ -812,6 +812,122 @@ def new_ticket_form():
     return render_template('new_ticket.html', elevators=elevators)
 
 
+@app.route('/m')
+@app.route('/mobile')
+def mechanic_mobile():
+    """Мобильная версия для механиков (PWA)"""
+    return render_template('mechanic_mobile.html')
+
+
+# ═══════════════════════════════════════════════════════════════
+# VK Bot Callback (Max messenger)
+# ═══════════════════════════════════════════════════════════════
+
+@app.route('/vk/callback', methods=['POST'])
+def vk_callback():
+    """Обработка callback от VK"""
+    import json
+    
+    data = request.get_json()
+    
+    if not data:
+        return 'ok'
+    
+    event_type = data.get('type')
+    
+    # Подтверждение сервера
+    if event_type == 'confirmation':
+        return os.getenv('VK_CONFIRMATION_CODE', '')
+    
+    # Сообщение
+    if event_type == 'message_new':
+        msg = data.get('object', {}).get('message', {})
+        user_id = msg.get('user_id')
+        text = msg.get('text', '')
+        
+        # Импортируем VK bot functions
+        try:
+            from vk_bot import (
+                send_message, get_main_keyboard, get_ticket_keyboard,
+                handle_my_tickets, handle_accept_ticket, handle_complete_ticket,
+                register_mechanic_vk, db as vk_db
+            )
+            
+            # Проверяем зарегистрирован ли механик
+            mechanic = vk_db.get_mechanic_by_vk(user_id)
+            
+            # Обработка команд
+            if text == '🛗 Мои лифты':
+                if mechanic:
+                    elevators = vk_db.get_mechanic_elevators(mechanic['id'])
+                    if elevators:
+                        message = f"🛗 Ваши лифты ({len(elevators)}):\n\n"
+                        for e in elevators:
+                            message += f"• {e['elevator_id']} - {e['address']}\n"
+                    else:
+                        message = "ℹ️ За вами не закреплены лифты"
+                else:
+                    message = "❌ Вы не зарегистрированы"
+                send_message(user_id, message, get_main_keyboard())
+            
+            elif text == '📋 Мои заявки':
+                import asyncio
+                message = asyncio.run(handle_my_tickets(user_id))
+                send_message(user_id, message, get_main_keyboard())
+            
+            elif text == '❓ Помощь':
+                help_text = """📖 Справка по боту:
+
+🛗 Мои лифты - список закрепленных лифтов
+📋 Мои заявки - ваши заявки  
+✅ Завершить заявку - завершить текущую заявку
+
+📸 Отправьте фото для прикрепления к заявке
+❓ Помощь - показать эту справку"""
+                send_message(user_id, help_text, get_main_keyboard())
+            
+            elif text == '✅ Завершить заявку':
+                import asyncio
+                from vk_bot import vk_user_data
+                if str(user_id) in vk_user_data and 'ticket_id' in vk_user_data[str(user_id)]:
+                    ticket_id = vk_user_data[str(user_id)]['ticket_id']
+                    message = asyncio.run(handle_complete_ticket(user_id, ticket_id))
+                    send_message(user_id, message)
+                else:
+                    send_message(user_id, "❌ Нет активной заявки для завершения")
+            
+            elif 'accept_' in text:
+                try:
+                    ticket_id = int(text.split('_')[1])
+                    import asyncio
+                    message = asyncio.run(handle_accept_ticket(user_id, ticket_id))
+                    send_message(user_id, message, get_ticket_keyboard(ticket_id, 'in_progress'))
+                    
+                    from vk_bot import vk_user_data
+                    vk_user_data[str(user_id)] = {'ticket_id': ticket_id}
+                except:
+                    send_message(user_id, "❌ Неверный формат команды")
+            
+            else:
+                # Неизвестная команда
+                if not mechanic:
+                    if text.startswith('+'):
+                        success, name = register_mechanic_vk(user_id, text)
+                        if success:
+                            send_message(user_id, f"✅ Регистрация успешна!\n\nДобро пожаловать, {name}!\n\nТеперь вы будете получать заявки на ремонт.", get_main_keyboard())
+                        else:
+                            send_message(user_id, "❌ Механик с таким номером не найден. Обратитесь к администратору.")
+                    else:
+                        send_message(user_id, "👋 Для регистрации отправьте ваш номер телефона:\n\nПример: +79991234567")
+                else:
+                    send_message(user_id, "ℹ️ Используйте кнопки меню", get_main_keyboard())
+        
+        except Exception as e:
+            print(f"VK Callback error: {e}")
+    
+    return 'ok'
+
+
 @app.route('/elevators')
 def elevators_list():
     """Справочник лифтов"""
@@ -1349,6 +1465,24 @@ def api_update_ticket(ticket_id):
     
     if not ticket:
         return jsonify({'success': False, 'error': 'Ticket not found'}), 404
+
+
+@app.route('/api/tickets/<int:ticket_id>/accept', methods=['POST'])
+def api_accept_ticket_mobile(ticket_id):
+    """Принять заявку в работу (мобильная версия)"""
+    ticket = db.update_ticket_status(ticket_id, 'в работе', 'mobile')
+    if not ticket:
+        return jsonify({'success': False, 'error': 'Ticket not found'}), 404
+    return jsonify({'success': True})
+
+
+@app.route('/api/tickets/<int:ticket_id>/complete', methods=['POST'])
+def api_complete_ticket_mobile(ticket_id):
+    """Завершить заявку (мобильная версия)"""
+    ticket = db.update_ticket_status(ticket_id, 'выполнена', 'mobile')
+    if not ticket:
+        return jsonify({'success': False, 'error': 'Ticket not found'}), 404
+    return jsonify({'success': True})
     
     return jsonify({
         'success': True,

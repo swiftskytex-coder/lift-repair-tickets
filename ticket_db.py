@@ -122,6 +122,12 @@ class TicketDatabase:
             except sqlite3.OperationalError:
                 pass  # Колонка уже существует
             
+            # Миграция: добавляем VK ID
+            try:
+                cursor.execute('ALTER TABLE mechanics ADD COLUMN vk_id TEXT')
+            except sqlite3.OperationalError:
+                pass  # Колонка уже существует
+            
             # Таблица механиков
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS mechanics (
@@ -746,6 +752,16 @@ class TicketDatabase:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('SELECT * FROM mechanics WHERE telegram_chat_id = ?', (str(telegram_chat_id),))
+            row = cursor.fetchone()
+            if row:
+                return self._row_to_dict(row)
+            return None
+    
+    def get_mechanic_by_vk(self, vk_id):
+        """Получение механика по VK ID"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT * FROM mechanics WHERE vk_id = ?', (str(vk_id),))
             row = cursor.fetchone()
             if row:
                 return self._row_to_dict(row)
