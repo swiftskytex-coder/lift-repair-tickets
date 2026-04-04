@@ -266,7 +266,7 @@ def index():
             mech_info = {
                 'name': mech['name'],
                 'id': mech.get('id'),
-                'has_telegram': bool(mech.get('telegram_chat_id')),
+                'has_telegram': bool(mech.get('max_chat_id')),
                 'is_oncall': bool(oncall_today_id and mech['id'] == oncall_today_id),
                 'status': None  # Принял, Линейный, Аварийный
             }
@@ -298,7 +298,7 @@ def index():
             mechanics_list.append({
                 'name': oncall_to_add['name'],
                 'id': oncall_to_add.get('id'),
-                'has_telegram': bool(oncall_to_add.get('telegram_chat_id')),
+                'has_telegram': bool(oncall_to_add.get('max_chat_id')),
                 'is_oncall': True,
                 'status': 'Аварийный'
             })
@@ -347,7 +347,7 @@ def index():
                         mechanics_list.append({
                             'name': mech['name'],
                             'id': mech['id'],
-                            'has_telegram': bool(mech.get('telegram_chat_id')),
+                            'has_telegram': bool(mech.get('max_chat_id')),
                             'is_oncall': False,
                             'status': 'Принял',
                             'tg_status': tg_status
@@ -421,7 +421,7 @@ def index():
             try:
                 mechanic = db.get_mechanic(int(ticket['assigned_to']))
                 ticket['mechanic_name'] = mechanic['name'] if mechanic else 'Неизвестный'
-                ticket['mechanic_has_telegram'] = bool(mechanic and mechanic.get('telegram_chat_id'))
+                ticket['mechanic_has_telegram'] = bool(mechanic and mechanic.get('max_chat_id'))
                 if oncall_today_id and mechanic and mechanic['id'] == oncall_today_id:
                     ticket['is_oncall_today'] = True
             except:
@@ -844,6 +844,12 @@ def about_page():
     '''
 
 
+@app.route('/settings')
+def settings_page():
+    """Страница настроек"""
+    return render_template('settings.html')
+
+
 @app.route('/mechanics')
 def mechanics_list():
     """Справочник механиков"""
@@ -871,7 +877,7 @@ def oncall_schedule():
     with db.get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT o.date, m.name, m.phone, m.telegram_username 
+            SELECT o.date, m.name, m.phone, m.max_username 
             FROM oncall_mechanics o
             JOIN mechanics m ON o.mechanic_id = m.id
             ORDER BY o.date DESC LIMIT 10
@@ -882,7 +888,7 @@ def oncall_schedule():
                 'date': row[0],
                 'name': row[1],
                 'phone': row[2],
-                'telegram_username': row[3]
+                'max_username': row[3]
             })
     
     return render_template('oncall_schedule.html', 
@@ -1148,7 +1154,7 @@ def api_tickets_html():
                     mech_info = {
                         'name': mech['name'],
                         'id': mech.get('id'),
-                        'has_telegram': bool(mech.get('telegram_chat_id')),
+                        'has_telegram': bool(mech.get('max_chat_id')),
                         'is_oncall': is_oncall,
                         'status': 'Принял' if assigned_id and str(assigned_id) == str(mech['id']) else ('Аварийный' if is_oncall else 'Линейный'),
                         'tg_status': 'accepted' if assigned_id and str(assigned_id) == str(mech['id']) else None
@@ -1162,7 +1168,7 @@ def api_tickets_html():
                         mechanics_list.append({
                             'name': oncall_today['name'],
                             'id': oncall_today.get('id'),
-                            'has_telegram': bool(oncall_today.get('telegram_chat_id')),
+                            'has_telegram': bool(oncall_today.get('max_chat_id')),
                             'is_oncall': True,
                             'status': 'Аварийный',
                             'tg_status': None
@@ -1183,7 +1189,7 @@ def api_tickets_html():
                                 mechanics_list.append({
                                     'name': assigned_mechanic['name'],
                                     'id': assigned_mechanic.get('id'),
-                                    'has_telegram': bool(assigned_mechanic.get('telegram_chat_id')),
+                                    'has_telegram': bool(assigned_mechanic.get('max_chat_id')),
                                     'is_oncall': False,
                                     'status': 'Принял',
                                     'tg_status': 'accepted'
@@ -2029,6 +2035,21 @@ if __name__ == '__main__':
     from notification_service import start_scheduler
     start_scheduler()
     
+    # API для настроек
+    @app.route('/api/settings', methods=['GET'])
+    def api_get_settings():
+        """Получение всех настроек"""
+        settings = db.get_all_settings()
+        return jsonify(settings)
+    
+    @app.route('/api/settings', methods=['POST'])
+    def api_save_settings():
+        """Сохранение настроек"""
+        data = request.get_json()
+        for key, value in data.items():
+            db.set_setting(key, str(value))
+        return jsonify({'success': True})
+    
     print("=" * 60)
     print("🛠️  Система заявок на ремонт лифтов")
     print("=" * 60)
@@ -2037,6 +2058,60 @@ if __name__ == '__main__':
     print("🏥 Health check: http://localhost:8081/api/health")
     print("⏰ Утренняя рассылка: 8:00 (пн-пт)")
     print("=" * 60)
+    
+    # Webhook для Max бота
+    @app.route('/max/webhook', methods=['GET', 'POST'])
+    def max_webhook():
+        """Webhook для Max бота"""
+        import json
+        
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'ok': True})
+        
+        event_type = data.get('update_type')
+        
+        # Подтверждение сервера
+        if event_type == 'confirmation':
+            return os.getenv('MAX_CONFIRMATION_CODE', '')
+        
+        # Новое сообщение
+        if event_type == 'message_created':
+            msg = data.get('message', {})
+            sender = msg.get('sender', {})
+            user_id = sender.get('user_id')
+            text = msg.get('body', {}).get('text', '')
+            
+            try:
+                from max_bot import process_message
+                process_message(user_id, text)
+            except Exception as e:
+                print(f"Max Webhook error: {e}")
+        
+        # Бот запущен
+        elif event_type == 'bot_started':
+            user = data.get('user', {})
+            user_id = user.get('user_id')
+            try:
+                from max_bot import send_message, get_main_keyboard
+                send_message(user_id, "👋 Привет! Отправьте номер телефона для регистрации:\n\nПример: +79991234567", get_main_keyboard())
+            except Exception as e:
+                print(f"Max bot_started error: {e}")
+        
+        # Callback от кнопки
+        elif event_type == 'callback_query':
+            callback = data.get('callback', {})
+            user_id = callback.get('user_id')
+            payload = callback.get('payload', '')
+            
+            try:
+                from max_bot import process_callback
+                process_callback(user_id, payload)
+            except Exception as e:
+                print(f"Max callback_query error: {e}")
+        
+        return jsonify({'ok': True})
     
     app.run(
         host='0.0.0.0',

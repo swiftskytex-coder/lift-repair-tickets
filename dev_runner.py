@@ -35,8 +35,8 @@ class ProcessManager:
         if self.bot_process:
             self.bot_process.terminate()
             self.bot_process.wait()
-        print("🤖 Запуск Telegram бота...")
-        self.bot_process = subprocess.Popen([sys.executable, "telegram_bot.py"])
+        print("🤖 Запуск Max бота...")
+        self.bot_process = subprocess.Popen([sys.executable, "max_bot.py"])
 
     def stop_all(self):
         if self.flask_process:
@@ -64,7 +64,7 @@ if __name__ == "__main__":
     flask_handler = ReloadHandler("Flask", manager.start_flask)
     observer.schedule(flask_handler, path=".", recursive=False)
 
-    # Следим за telegram_bot.py и notification_service.py для перезапуска Бота
+    # Следим за max_bot.py и notification_service.py для перезапуска Бота
     # (на самом деле следим за всеми .py в корне, так проще)
     bot_handler = ReloadHandler("Bot", manager.start_bot)
     

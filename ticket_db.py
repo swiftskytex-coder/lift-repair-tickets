@@ -122,8 +122,8 @@ class TicketDatabase:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL,
                     phone TEXT UNIQUE NOT NULL,
-                    telegram_chat_id TEXT,
-                    telegram_username TEXT,
+                    max_chat_id TEXT,
+                    max_username TEXT,
                     status TEXT DEFAULT 'active',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -203,6 +203,19 @@ class TicketDatabase:
                     FOREIGN KEY (mechanic_id) REFERENCES mechanics(id) ON DELETE SET NULL
                 )
             ''')
+            
+            # Таблица настроек системы
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            # Настройки по умолчанию
+            cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('notification_linear', 'true')")
+            cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('notification_oncall', 'true')")
             
             conn.commit()
     
@@ -704,13 +717,13 @@ class TicketDatabase:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                INSERT INTO mechanics (name, phone, telegram_chat_id, telegram_username, status)
+                INSERT INTO mechanics (name, phone, max_chat_id, max_username, status)
                 VALUES (?, ?, ?, ?, ?)
             ''', (
                 data.get('name'),
                 data.get('phone'),
-                data.get('telegram_chat_id'),
-                data.get('telegram_username'),
+                data.get('max_chat_id'),
+                data.get('max_username'),
                 data.get('status', 'active')
             ))
             conn.commit()
@@ -734,11 +747,11 @@ class TicketDatabase:
                 return self._row_to_dict(row)
             return None
 
-    def get_mechanic_by_telegram(self, telegram_chat_id):
+    def get_mechanic_by_max(self, max_chat_id):
         """Получение механика по ID чата Telegram"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute('SELECT * FROM mechanics WHERE telegram_chat_id = ?', (str(telegram_chat_id),))
+            cursor.execute('SELECT * FROM mechanics WHERE max_chat_id = ?', (str(max_chat_id),))
             row = cursor.fetchone()
             if row:
                 return self._row_to_dict(row)
@@ -893,52 +906,54 @@ class TicketDatabase:
             conn.commit()
 
     def get_next_oncall_mechanic(self):
-        """Получить следующего аварийного механика (из списка последних дежуривших, без двух дней подряд)"""
-        from datetime import datetime, timedelta
+        """Получение следующего аварийного механика (если не назначен на сегодня)"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
         
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            
-            # Получаем всех активных механиков
-            cursor.execute('''
-                SELECT m.id, m.name, m.phone, m.telegram_username, m.telegram_chat_id FROM mechanics m
-                WHERE m.status = 'active'
-                ORDER BY m.id
-            ''')
-            all_mechanics = [self._row_to_dict(r) for r in cursor.fetchall()]
-
-            if not all_mechanics:
-                return None
-
-            # Получаем последние 4 дня дежурств
-            cursor.execute('''
-                SELECT mechanic_id, date FROM oncall_mechanics
-                ORDER BY date DESC LIMIT 4
-            ''')
-            recent = cursor.fetchall()
-
-            # Если нет истории, берём первого
-            if not recent:
-                return all_mechanics[0]
-            
-            # Список ID кто дежурил в последние дни (без повторов)
-            recent_ids = []
-            for r in recent:
-                if r[0] not in recent_ids:
-                    recent_ids.append(r[0])
-            
-            # Если кто-то дежурил вчера/сегодня, пропускаем его
-            yesterday_id = recent[0][0] if len(recent) > 0 else None
-            
-            # Ищем следующего после вчерашнего
-            for i, rid in enumerate(recent_ids):
-                if rid != yesterday_id:
-                    for mech in all_mechanics:
-                        if mech['id'] == rid:
-                            return mech
-            
-            # Если не нашли, берём первого из списка (кто не дежурил вчера)
-            return all_mechanics[0]
+        today = datetime.now().strftime('%Y-%m-%d')
+        
+        cursor.execute("""
+            SELECT m.* FROM mechanics m
+            WHERE m.status = 'active'
+            AND m.id NOT IN (SELECT mechanic_id FROM oncall_mechanics WHERE date = ?)
+            ORDER BY m.id LIMIT 1
+        """, (today,))
+        
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return dict(row)
+        return None
+    
+    def get_setting(self, key, default=None):
+        """Получение настройки"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT value FROM settings WHERE key = ?", (key,))
+        row = cursor.fetchone()
+        conn.close()
+        return row['value'] if row else default
+    
+    def set_setting(self, key, value):
+        """Установка настройки"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+            (key, value)
+        )
+        conn.commit()
+        conn.close()
+    
+    def get_all_settings(self):
+        """Получение всех настроек"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT key, value FROM settings")
+        rows = cursor.fetchall()
+        conn.close()
+        return {row['key']: row['value'] for row in rows}
 
 
 # Синглтон для доступа к БД
@@ -954,10 +969,10 @@ if __name__ == "__main__":
     
     # Добавляем механиков
     mechanics = [
-        {"name": "Иванов И.И.", "phone": "+79001112233", "telegram_username": "ivanov_i"},
-        {"name": "Петров П.П.", "phone": "+79002223344", "telegram_username": "petrov_p"},
-        {"name": "Сидоров С.С.", "phone": "+79003334455", "telegram_username": "sidorov_s"},
-        {"name": "Кузнецов К.К.", "phone": "+79004445566", "telegram_username": "kuznetsov_k"},
+        {"name": "Иванов И.И.", "phone": "+79001112233", "max_username": "ivanov_i"},
+        {"name": "Петров П.П.", "phone": "+79002223344", "max_username": "petrov_p"},
+        {"name": "Сидоров С.С.", "phone": "+79003334455", "max_username": "sidorov_s"},
+        {"name": "Кузнецов К.К.", "phone": "+79004445566", "max_username": "kuznetsov_k"},
     ]
     
     for m in mechanics:
