@@ -8,6 +8,7 @@ import asyncio
 import zipfile
 import io
 import sqlite3
+import os
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from flask import Flask, request, jsonify, render_template, send_from_directory, send_file
@@ -2059,57 +2060,58 @@ if __name__ == '__main__':
     print("⏰ Утренняя рассылка: 8:00 (пн-пт)")
     print("=" * 60)
     
-    # Webhook для Max бота
+# Webhook для Max бота
     @app.route('/max/webhook', methods=['GET', 'POST'])
     def max_webhook():
         """Webhook для Max бота"""
-        import json
+        import sys, os
         
-        data = request.get_json()
-        
+        # Try to get JSON
+        data = request.get_json(force=True, silent=True)
         if not data:
-            return jsonify({'ok': True})
+            return os.getenv('MAX_CONFIRMATION_CODE', '')
         
         event_type = data.get('update_type')
         
-        # Подтверждение сервера
+        # Confirmation
         if event_type == 'confirmation':
-            return os.getenv('MAX_CONFIRMATION_CODE', '')
+            return os.getenv('MAX_CONFIRMATION_CODE', ''), 200, {'Content-Type': 'text/plain'}
         
-        # Новое сообщение
+        # Message
         if event_type == 'message_created':
             msg = data.get('message', {})
-            sender = msg.get('sender', {})
-            user_id = sender.get('user_id')
+            user_id = msg.get('sender', {}).get('user_id')
             text = msg.get('body', {}).get('text', '')
             
-            try:
-                from max_bot import process_message
-                process_message(user_id, text)
-            except Exception as e:
-                print(f"Max Webhook error: {e}")
-        
-        # Бот запущен
-        elif event_type == 'bot_started':
-            user = data.get('user', {})
-            user_id = user.get('user_id')
-            try:
-                from max_bot import send_message, get_main_keyboard
-                send_message(user_id, "👋 Привет! Отправьте номер телефона для регистрации:\n\nПример: +79991234567", get_main_keyboard())
-            except Exception as e:
-                print(f"Max bot_started error: {e}")
-        
-        # Callback от кнопки
-        elif event_type == 'callback_query':
-            callback = data.get('callback', {})
-            user_id = callback.get('user_id')
-            payload = callback.get('payload', '')
+            # Set token for max_bot
+            max_token = os.getenv('MAX_BOT_TOKEN') or os.environ.get('MAX_BOT_TOKEN', '') or 'f9LHodD0cOJr6-3caEEtEU-KqU42RaPXLpz3wkHbJMQc0vANY8fVYJfXn0bsZh7IdSq0sNqBkyGwfySDPS8l'
+            os.environ['MAX_BOT_TOKEN'] = max_token
             
             try:
-                from max_bot import process_callback
-                process_callback(user_id, payload)
+                mechanic = db.get_mechanic_by_max(user_id)
+                
+                if mechanic:
+                    from max_bot import get_ai_context, ask_ai, send_message, get_ai_keyboard
+                    
+                    context = get_ai_context(user_id)
+                    response = ask_ai(text, context)
+                    result = send_message(user_id, f"🤖 AI\n\n{response}", get_ai_keyboard())
+                else:
+                    from max_bot import send_message, get_main_keyboard
+                    send_message(user_id, "👋 Отправьте номер телефона:\n\nПример: +79991234567", get_main_keyboard())
+                    
             except Exception as e:
-                print(f"Max callback_query error: {e}")
+                print(f"Webhook error: {e}")
+        
+        # Bot started
+        elif event_type == 'bot_started':
+            from max_bot import send_message, get_main_keyboard
+            send_message(data.get('user', {}).get('user_id'), "👋 Привет! Отправьте номер телефона:", get_main_keyboard())
+        
+        # Callback
+        elif event_type == 'callback_query':
+            from max_bot import process_callback
+            process_callback(data.get('callback', {}).get('user_id'), data.get('callback', {}).get('payload', ''))
         
         return jsonify({'ok': True})
     

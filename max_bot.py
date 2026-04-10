@@ -16,7 +16,12 @@ from io import BytesIO
 from ticket_db import db
 
 MAX_API_URL = 'https://platform-api.max.ru'
-MAX_BOT_TOKEN = os.getenv('MAX_BOT_TOKEN', '')
+
+def get_max_token():
+    """Get token from environment, with fallback"""
+    return os.getenv('MAX_BOT_TOKEN') or os.environ.get('MAX_BOT_TOKEN', '') or 'f9LHodD0cOJr6-3caEEtEU-KqU42RaPXLpz3wkHbJMQc0vANY8fVYJfXn0bsZh7IdSq0sNqBkyGwfySDPS8l'
+
+MAX_BOT_TOKEN = get_max_token()
 
 # LM Studio AI Configuration
 LM_STUDIO_URL = "http://192.168.0.38:1234/v1/chat/completions"
@@ -104,7 +109,7 @@ def get_ai_context(user_id):
     active_tickets = [t for t in tickets if t.get('status') in ('новая', 'в работе')]
     
     # Получаем лифты
-    elevators = db.get_mechanics_for_elevator_by_mechanic(mechanic['id'])
+    elevators = db.get_mechanic_elevators(mechanic['id'])
     
     context = f"""Механик: {mechanic['name']}
 Телефон: {mechanic['phone']}
