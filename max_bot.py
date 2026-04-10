@@ -1,6 +1,7 @@
 """
 Max Bot для механиков
 Отправляет заявки и принимает отчеты с фото
+AI-ассистент для помощи с диагностикой и ремонтом
 """
 
 import sys
@@ -16,6 +17,106 @@ from ticket_db import db
 
 MAX_API_URL = 'https://platform-api.max.ru'
 MAX_BOT_TOKEN = os.getenv('MAX_BOT_TOKEN', '')
+
+# LM Studio AI Configuration
+LM_STUDIO_URL = "http://192.168.0.38:1234/v1/chat/completions"
+LM_API_TOKEN = "sk-lm-M6IENXKx:sL6tLQPn6pF792Bv2jQ2"
+LLM_MODEL = "qwen2.5-3b-instruct"
+
+# System prompt for AI assistant
+AI_SYSTEM_PROMPT = """Ты - AI-ассистент для лифтового механика в системе заявок.
+Твоя задача - помогать механику с заявками, диагностикой неисправностей и ремонтом.
+
+Правила:
+1. Отвечай кратко и по существу (3-5 предложений)
+2. Используй эмодзи для наглядности
+3. Если нужна доп. информация - спрашивай
+4. НЕ давай опасные советы по безопасности
+5. Если не знаешь - скажи честно
+6. Используй структуру: проблема → проверка → решение
+
+Контекст:
+- Время: Самара (UTC+4)
+- Система: Заявки на ремонт лифтов
+- Будь полезен и практичен"""
+
+
+def max_api(method, params=None):
+    """Вызов Max API"""
+    if params is None:
+        params = {}
+    headers = {'Authorization': MAX_BOT_TOKEN}
+    try:
+        response = requests.post(
+            f"{MAX_API_URL}/{method}",
+            headers=headers,
+            json=params,
+            timeout=10
+        )
+        return response.json()
+    except Exception as e:
+        print(f"Max API error: {e}")
+        return {'error': str(e)}
+
+
+def ask_ai(prompt, context=None):
+    """Запрос к LM Studio AI"""
+    headers = {
+        "Authorization": f"Bearer {LM_API_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    
+    messages = [{"role": "system", "content": AI_SYSTEM_PROMPT}]
+    
+    if context:
+        messages.append({"role": "system", "content": f"Контекст: {context}"})
+    
+    messages.append({"role": "user", "content": prompt})
+    
+    data = {
+        "model": LLM_MODEL,
+        "messages": messages,
+        "max_tokens": 400,
+        "temperature": 0.7
+    }
+    
+    try:
+        response = requests.post(LM_STUDIO_URL, headers=headers, json=data, timeout=60)
+        if response.status_code == 200:
+            result = response.json()
+            return result["choices"][0]["message"]["content"]
+        else:
+            return f"⚠️ Ошибка AI: {response.status_code}"
+    except requests.exceptions.Timeout:
+        return "⏳ AI занят, попробуйте позже"
+    except Exception as e:
+        return f"🔌 Ошибка подключения: {str(e)}"
+
+
+def get_ai_context(user_id):
+    """Получить контекст для AI"""
+    mechanic = db.get_mechanic_by_max(user_id)
+    if not mechanic:
+        return "Пользователь не зарегистрирован"
+    
+    # Получаем активные заявки
+    tickets = db.get_all_mechanic_tickets(mechanic['id'])
+    active_tickets = [t for t in tickets if t.get('status') in ('новая', 'в работе')]
+    
+    # Получаем лифты
+    elevators = db.get_mechanics_for_elevator_by_mechanic(mechanic['id'])
+    
+    context = f"""Механик: {mechanic['name']}
+Телефон: {mechanic['phone']}
+Активных заявок: {len(active_tickets)}
+Лифтов закреплено: {len(elevators)}"""
+    
+    if active_tickets:
+        context += "\nТекущие заявки:\n"
+        for t in active_tickets[:3]:
+            context += f"- #{t.get('ticket_number', t['id'])}: {t.get('address', 'N/A')} - {t.get('status', 'N/A')}\n"
+    
+    return context
 
 
 def max_api(method, params=None):
@@ -61,9 +162,22 @@ def get_main_keyboard():
             {'type': 'callback', 'text': '📋 Мои заявки', 'payload': 'my_tickets'}
         ],
         [
-            {'type': 'callback', 'text': '❓ Помощь', 'payload': 'help'},
+            {'type': 'callback', 'text': '🤖 AI Помощник', 'payload': 'ai_assistant'},
+            {'type': 'callback', 'text': '❓ Помощь', 'payload': 'help'}
+        ],
+        [
             {'type': 'callback', 'text': '✅ Завершить заявку', 'payload': 'complete_ticket'}
         ]
+    ]
+
+
+def get_ai_keyboard():
+    """Клавиатура для AI режима"""
+    return [
+        [{'type': 'callback', 'text': '📋 Мои заявки', 'payload': 'my_tickets_ai'}],
+        [{'type': 'callback', 'text': '🔧 Диагностика', 'payload': 'ai_diag'}],
+        [{'type': 'callback', 'text': '📖 База знаний', 'payload': 'ai_kb'}],
+        [{'type': 'callback', 'text': '⬅️ Назад', 'payload': 'back_to_menu'}]
     ]
 
 
@@ -85,7 +199,7 @@ def process_callback(user_id, payload):
     if not user_id or not payload:
         return
     
-    from max_bot import send_message, get_main_keyboard
+    from max_bot import send_message, get_main_keyboard, get_ai_keyboard
     
     if payload == 'my_elevators':
         process_message(user_id, '🛗 Мои лифты')
@@ -95,6 +209,17 @@ def process_callback(user_id, payload):
         process_message(user_id, '❓ Помощь')
     elif payload == 'complete_ticket':
         process_message(user_id, '✅ Завершить заявку')
+    elif payload == 'ai_assistant':
+        # Запуск AI ассистента
+        context = get_ai_context(user_id)
+        response = ask_ai("Привет! Представься и расскажи чем можешь помочь.", context)
+        send_message(user_id, f"🤖 AI-Ассистент\n\n{response}", get_ai_keyboard())
+    elif payload == 'back_to_menu':
+        mechanic = get_mechanic_by_max(user_id)
+        if mechanic:
+            show_main_menu(user_id, mechanic)
+        else:
+            send_message(user_id, "👋 Отправьте номер телефона для регистрации", get_main_keyboard())
     elif payload.startswith('accept_'):
         try:
             ticket_id = int(payload.split('_')[1])
@@ -151,8 +276,31 @@ def process_message(user_id, text):
             send_message(user_id, message, get_main_keyboard())
         except:
             send_message(user_id, "❌ Команда не распознана")
+    elif text.startswith('?') or text.lower().startswith('ai ') or text.lower().startswith('помоги'):
+        # AI запрос
+        question = text.lstrip('?').lstrip('ai ').lstrip('помоги ')
+        if not question:
+            question = text
+        context = get_ai_context(user_id)
+        response = ask_ai(question, context)
+        send_message(user_id, f"🤖 AI\n\n{response}", get_ai_keyboard())
+    elif text.startswith('/ai'):
+        # AI команда
+        question = text[3:].strip()
+        if question:
+            context = get_ai_context(user_id)
+            response = ask_ai(question, context)
+            send_message(user_id, f"🤖 AI\n\n{response}", get_ai_keyboard())
+        else:
+            send_message(user_id, "📝 Напишите вопрос после /ai\n\nПример: /ai что проверить в лифте")
     else:
-        send_message(user_id, "Используйте кнопки меню", get_main_keyboard())
+        # Не команда - пробуем AI
+        if len(text) > 3:
+            context = get_ai_context(user_id)
+            response = ask_ai(text, context)
+            send_message(user_id, f"🤖 AI\n\n{response}", get_ai_keyboard())
+        else:
+            send_message(user_id, "Используйте кнопки меню", get_main_keyboard())
 
 
 def get_mechanic_by_max(max_chat_id):
