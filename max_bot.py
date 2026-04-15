@@ -9,9 +9,26 @@ sys.path.insert(0, '/Users/swiftpanaev/KIRO/test4')
 
 import os
 import json
+import time
 import requests
+import logging
 from datetime import datetime
 from PIL import Image
+from logging.handlers import RotatingFileHandler
+
+# Настройка логгирования
+LOG_FILE = '/app/max_bot.log'
+os.makedirs('/app', exist_ok=True)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s | %(levelname)-8s | %(message)s',
+    handlers=[
+        RotatingFileHandler(LOG_FILE, maxBytes=5*1024*1024, backupCount=3),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger('max_bot')
 from io import BytesIO
 from ticket_db import db
 
@@ -21,29 +38,33 @@ def get_max_token():
     """Get token from environment, with fallback"""
     return os.getenv('MAX_BOT_TOKEN') or os.environ.get('MAX_BOT_TOKEN', '') or 'f9LHodD0cOJr6-3caEEtEU-KqU42RaPXLpz3wkHbJMQc0vANY8fVYJfXn0bsZh7IdSq0sNqBkyGwfySDPS8l'
 
+def get_bot_token():
+    """Get bot token for uploads API"""
+    return os.getenv('MAX_BOT_TOKEN') or 'f9LHodD0cOJr6-3caEEtEU-KqU42RaPXLpz3wkHbJMQc0vANY8fVYJfXn0bsZh7IdSq0sNqBkyGwfySDPS8l'
+
+
 MAX_BOT_TOKEN = get_max_token()
+
+
+def send_message_with_photo(user_id, text, keyboard=None, photo_url=None):
+    """Отправка сообщения - просто текст"""
+    return send_message(user_id, text, keyboard)
 
 # LM Studio AI Configuration
 LM_STUDIO_URL = "http://192.168.0.38:1234/v1/chat/completions"
 LM_API_TOKEN = "sk-lm-M6IENXKx:sL6tLQPn6pF792Bv2jQ2"
-LLM_MODEL = "qwen2.5-3b-instruct"
+LLM_MODEL = "qwen/qwen2.5-3b-instruct"
 
 # System prompt for AI assistant
-AI_SYSTEM_PROMPT = """Ты - AI-ассистент для лифтового механика в системе заявок.
-Твоя задача - помогать механику с заявками, диагностикой неисправностей и ремонтом.
+AI_SYSTEM_PROMPT = """Ты - AI-ассистент для лифтового механика.
+Работаешь только с заявками на ремонт лифтов.
 
 Правила:
-1. Отвечай кратко и по существу (3-5 предложений)
-2. Используй эмодзи для наглядности
-3. Если нужна доп. информация - спрашивай
-4. НЕ давай опасные советы по безопасности
-5. Если не знаешь - скажи честно
-6. Используй структуру: проблема → проверка → решение
-
-Контекст:
-- Время: Самара (UTC+4)
-- Система: Заявки на ремонт лифтов
-- Будь полезен и практичен"""
+1. Отвечай кратко (1-3 предложения)
+2. Используй эмодзи
+3. Работай только с заявками: создание, просмотр, выполнение
+4. Если нужен осмотр - запроси у клиента
+5. Не давай советы по ремонту"""
 
 
 def max_api(method, params=None):
@@ -85,16 +106,22 @@ def ask_ai(prompt, context=None):
         "temperature": 0.7
     }
     
+    print(f"🤖 AI запрос: модель={LLM_MODEL}")
+    
     try:
-        response = requests.post(LM_STUDIO_URL, headers=headers, json=data, timeout=60)
+        response = requests.post(LM_STUDIO_URL, headers=headers, json=data, timeout=120)
+        print(f"📡 AI ответ: {response.status_code}")
         if response.status_code == 200:
             result = response.json()
             return result["choices"][0]["message"]["content"]
         else:
-            return f"⚠️ Ошибка AI: {response.status_code}"
+            print(f"❌ AI ошибка: {response.text[:200]}")
+            return f"⚠️ AI временно недоступен"
     except requests.exceptions.Timeout:
+        print("⏳ AI таймаут")
         return "⏳ AI занят, попробуйте позже"
     except Exception as e:
+        print(f"🔌 AI ошибка: {e}")
         return f"🔌 Ошибка подключения: {str(e)}"
 
 
@@ -142,9 +169,33 @@ def max_api(method, params=None):
         return {'error': str(e)}
 
 
-def send_message(user_id, text, keyboard=None):
+def max_api_get(method, params=None):
+    """Вызов Max API через GET для long polling"""
+    if params is None:
+        params = {}
+    headers = {'Authorization': MAX_BOT_TOKEN}
+    try:
+        response = requests.get(
+            f"{MAX_API_URL}/{method}",
+            headers=headers,
+            params=params,
+            timeout=90
+        )
+        return response.json()
+    except Exception as e:
+        print(f"Max API GET error: {e}")
+        return {'error': str(e)}
+
+
+def send_message(user_id, text, keyboard=None, format_type='markdown'):
     """Отправка сообщения в Max"""
+    logger.info(f"📨 SEND to {user_id}: {text[:60]}...")
+    print(f"📨 send_message to {user_id}: {text[:50]}...", flush=True)
+    
     params = {'text': text}
+    
+    if format_type:
+        params['format'] = format_type
     
     if keyboard:
         params['attachments'] = [
@@ -156,7 +207,10 @@ def send_message(user_id, text, keyboard=None):
             }
         ]
     
-    return max_api(f'messages?user_id={user_id}', params)
+    result = max_api(f'messages?user_id={user_id}', params)
+    logger.info(f"📨 SEND result: {result}")
+    print(f"📨 send_message result: {result}", flush=True)
+    return result
 
 
 def get_main_keyboard():
@@ -167,22 +221,17 @@ def get_main_keyboard():
             {'type': 'callback', 'text': '📋 Мои заявки', 'payload': 'my_tickets'}
         ],
         [
-            {'type': 'callback', 'text': '🤖 AI Помощник', 'payload': 'ai_assistant'},
-            {'type': 'callback', 'text': '❓ Помощь', 'payload': 'help'}
-        ],
-        [
             {'type': 'callback', 'text': '✅ Завершить заявку', 'payload': 'complete_ticket'}
         ]
     ]
 
 
 def get_ai_keyboard():
-    """Клавиатура для AI режима"""
+    """Клавиатура для AI - только главное меню"""
     return [
-        [{'type': 'callback', 'text': '📋 Мои заявки', 'payload': 'my_tickets_ai'}],
-        [{'type': 'callback', 'text': '🔧 Диагностика', 'payload': 'ai_diag'}],
-        [{'type': 'callback', 'text': '📖 База знаний', 'payload': 'ai_kb'}],
-        [{'type': 'callback', 'text': '⬅️ Назад', 'payload': 'back_to_menu'}]
+        [{'type': 'callback', 'text': '🛗 Мои лифты', 'payload': 'my_elevators'},
+         {'type': 'callback', 'text': '📋 Мои заявки', 'payload': 'my_tickets'}],
+        [{'type': 'callback', 'text': '✅ Завершить', 'payload': 'complete_ticket'}]
     ]
 
 
@@ -190,36 +239,41 @@ def get_ticket_keyboard(ticket_id, status='new'):
     """Клавиатура для работы с заявкой"""
     if status == 'new':
         return [
-            [{'type': 'callback', 'text': '✅ Принять в работу', 'payload': f'accept_{ticket_id}'}]
+            [{'type': 'callback', 'text': '✅ Принять', 'payload': f'accept_{ticket_id}'},
+             {'type': 'callback', 'text': '📞 Позвонить', 'payload': f'call_{ticket_id}'}],
+            [{'type': 'callback', 'text': '📋 Детали', 'payload': f'details_{ticket_id}'},
+             {'type': 'callback', 'text': '❌ Отклонить', 'payload': f'reject_{ticket_id}'}]
         ]
     elif status == 'in_progress':
         return [
-            [{'type': 'callback', 'text': '✅ Завершить', 'payload': f'complete_{ticket_id}'}]
+            [{'type': 'callback', 'text': '✅ Завершить', 'payload': f'complete_{ticket_id}'},
+             {'type': 'callback', 'text': '⚠️ Проблема', 'payload': f'issue_{ticket_id}'}],
+            [{'type': 'callback', 'text': '📸 Фото', 'payload': f'photo_{ticket_id}'},
+             {'type': 'callback', 'text': '📝 Комментарий', 'payload': f'comment_{ticket_id}'}]
         ]
     return None
 
 
 def process_callback(user_id, payload):
     """Обработка callback от кнопок"""
+    logger.info(f"🔄 CALLBACK: user={user_id}, payload={payload}")
+    print(f"🔄 process_callback: user={user_id}, payload={payload}", flush=True)
+    
     if not user_id or not payload:
+        logger.warning("⚠️ CALLBACK: missing user_id or payload")
         return
     
-    from max_bot import send_message, get_main_keyboard, get_ai_keyboard
-    
     if payload == 'my_elevators':
+        logger.info(f"📋 Menu: my_elevators from user {user_id}")
         process_message(user_id, '🛗 Мои лифты')
     elif payload == 'my_tickets':
+        logger.info(f"📋 Menu: my_tickets from user {user_id}")
         process_message(user_id, '📋 Мои заявки')
-    elif payload == 'help':
-        process_message(user_id, '❓ Помощь')
     elif payload == 'complete_ticket':
+        logger.info(f"📋 Menu: complete_ticket from user {user_id}")
         process_message(user_id, '✅ Завершить заявку')
-    elif payload == 'ai_assistant':
-        # Запуск AI ассистента
-        context = get_ai_context(user_id)
-        response = ask_ai("Привет! Представься и расскажи чем можешь помочь.", context)
-        send_message(user_id, f"🤖 AI-Ассистент\n\n{response}", get_ai_keyboard())
     elif payload == 'back_to_menu':
+        logger.info(f"📋 Menu: back_to_menu from user {user_id}")
         mechanic = get_mechanic_by_max(user_id)
         if mechanic:
             show_main_menu(user_id, mechanic)
@@ -228,18 +282,86 @@ def process_callback(user_id, payload):
     elif payload.startswith('accept_'):
         try:
             ticket_id = int(payload.split('_')[1])
+            logger.info(f"✅ ACCEPT: ticket={ticket_id} from user={user_id}")
             message = handle_accept_ticket(user_id, ticket_id)
+            logger.info(f"📤 accept response: {message[:80]}...")
             send_message(user_id, message, get_ticket_keyboard(ticket_id, 'in_progress'))
-        except:
-            send_message(user_id, "❌ Команда не распознана")
+        except Exception as e:
+            logger.error(f"❌ accept error: {e}")
+            send_message(user_id, "❌ Ошибка")
+    
     elif payload.startswith('complete_'):
         try:
             ticket_id = int(payload.split('_')[1])
+            logger.info(f"✅ COMPLETE: ticket={ticket_id} from user={user_id}")
             message = handle_complete_ticket(user_id, ticket_id)
             send_message(user_id, message, get_main_keyboard())
-        except:
-            send_message(user_id, "❌ Команда не распознана")
+        except Exception as e:
+            logger.error(f"❌ complete error: {e}")
+            send_message(user_id, "❌ Ошибка")
+    
+    elif payload.startswith('call_'):
+        try:
+            ticket_id = int(payload.split('_')[1])
+            logger.info(f"📞 CALL: ticket={ticket_id} from user={user_id}")
+            message = handle_call_client(user_id, ticket_id)
+            send_message(user_id, message)
+        except Exception as e:
+            logger.error(f"❌ call error: {e}")
+            send_message(user_id, "❌ Ошибка")
+    
+    elif payload.startswith('details_'):
+        try:
+            ticket_id = int(payload.split('_')[1])
+            logger.info(f"📋 DETAILS: ticket={ticket_id} from user={user_id}")
+            message = handle_show_details(user_id, ticket_id)
+            send_message(user_id, message, get_ticket_keyboard(ticket_id, 'new'))
+        except Exception as e:
+            logger.error(f"❌ details error: {e}")
+            send_message(user_id, "❌ Ошибка")
+    
+    elif payload.startswith('reject_'):
+        try:
+            ticket_id = int(payload.split('_')[1])
+            logger.info(f"❌ REJECT: ticket={ticket_id} from user={user_id}")
+            message = handle_reject_ticket(user_id, ticket_id)
+            send_message(user_id, message, get_main_keyboard())
+        except Exception as e:
+            logger.error(f"❌ reject error: {e}")
+            send_message(user_id, "❌ Ошибка")
+    
+    elif payload.startswith('issue_'):
+        try:
+            ticket_id = int(payload.split('_')[1])
+            logger.info(f"⚠️ ISSUE: ticket={ticket_id} from user={user_id}")
+            message = handle_report_issue(user_id, ticket_id)
+            send_message(user_id, message)
+        except Exception as e:
+            logger.error(f"❌ issue error: {e}")
+            send_message(user_id, "❌ Ошибка")
+    
+    elif payload.startswith('photo_'):
+        try:
+            ticket_id = int(payload.split('_')[1])
+            logger.info(f"📸 PHOTO: ticket={ticket_id} from user={user_id}")
+            message = handle_request_photo(user_id, ticket_id)
+            send_message(user_id, message)
+        except Exception as e:
+            logger.error(f"❌ photo error: {e}")
+            send_message(user_id, "❌ Ошибка")
+    
+    elif payload.startswith('comment_'):
+        try:
+            ticket_id = int(payload.split('_')[1])
+            logger.info(f"📝 COMMENT: ticket={ticket_id} from user={user_id}")
+            message = handle_request_comment(user_id, ticket_id)
+            send_message(user_id, message)
+        except Exception as e:
+            logger.error(f"❌ comment error: {e}")
+            send_message(user_id, "❌ Ошибка")
+    
     else:
+        logger.warning(f"⚠️ Unknown callback payload: {payload}")
         send_message(user_id, "ℹ️ Используйте кнопки меню", get_main_keyboard())
 
 
@@ -263,8 +385,6 @@ def process_message(user_id, text):
         show_elevators(user_id, mechanic)
     elif text == '📋 Мои заявки' or text.lower() == 'мои заявки':
         show_tickets(user_id, mechanic)
-    elif text == '❓ Помощь' or text.lower() == 'помощь':
-        show_help(user_id)
     elif text == '✅ Завершить заявку' or text.lower() == 'завершить заявку':
         show_complete_ticket(user_id, mechanic)
     elif text.startswith('accept_'):
@@ -280,7 +400,56 @@ def process_message(user_id, text):
             message = handle_complete_ticket(user_id, ticket_id)
             send_message(user_id, message, get_main_keyboard())
         except:
-            send_message(user_id, "❌ Команда не распознана")
+            send_message(user_id, "❌ Ошибка")
+    
+    elif text.startswith('call_'):
+        try:
+            ticket_id = int(text.split('_')[1])
+            message = handle_call_client(user_id, ticket_id)
+            send_message(user_id, message)
+        except:
+            send_message(user_id, "❌ Ошибка")
+    
+    elif text.startswith('details_'):
+        try:
+            ticket_id = int(text.split('_')[1])
+            message = handle_show_details(user_id, ticket_id)
+            send_message(user_id, message, get_ticket_keyboard(ticket_id, 'new'))
+        except:
+            send_message(user_id, "❌ Ошибка")
+    
+    elif text.startswith('reject_'):
+        try:
+            ticket_id = int(text.split('_')[1])
+            message = handle_reject_ticket(user_id, ticket_id)
+            send_message(user_id, message, get_main_keyboard())
+        except:
+            send_message(user_id, "❌ Ошибка")
+    
+    elif text.startswith('issue_'):
+        try:
+            ticket_id = int(text.split('_')[1])
+            message = handle_report_issue(user_id, ticket_id)
+            send_message(user_id, message)
+        except:
+            send_message(user_id, "❌ Ошибка")
+    
+    elif text.startswith('photo_'):
+        try:
+            ticket_id = int(text.split('_')[1])
+            message = handle_request_photo(user_id, ticket_id)
+            send_message(user_id, message)
+        except:
+            send_message(user_id, "❌ Ошибка")
+    
+    elif text.startswith('comment_'):
+        try:
+            ticket_id = int(text.split('_')[1])
+            message = handle_request_comment(user_id, ticket_id)
+            send_message(user_id, message)
+        except:
+            send_message(user_id, "❌ Ошибка")
+    
     elif text.startswith('?') or text.lower().startswith('ai ') or text.lower().startswith('помоги'):
         # AI запрос
         question = text.lstrip('?').lstrip('ai ').lstrip('помоги ')
@@ -342,7 +511,7 @@ def handle_accept_ticket(user_id, ticket_id):
         return "❌ Заявка уже назначена другому механику"
     
     db.update_ticket_status(ticket_id, 'в работе', f"max_bot (принял {mechanic['name']})")
-    db.assign_ticket(ticket_id, mechanic['id'])
+    db.update_ticket(ticket_id, {'assigned_to': str(mechanic['id'])})
     
     return f"✅ Заявка #{ticket.get('ticket_number', ticket_id)} принята в работу!\n\n📍 {ticket.get('address')}\n📝 {ticket.get('problem_description', '')[:200]}"
 
@@ -363,6 +532,77 @@ def handle_complete_ticket(user_id, ticket_id):
     db.update_ticket_status(ticket_id, 'выполнена', f"max_bot (завершил {mechanic['name']})")
     
     return f"✅ Заявка #{ticket.get('ticket_number', ticket_id)} завершена!\n\nСпасибо за работу!"
+
+
+def handle_call_client(user_id, ticket_id):
+    """Позвонить клиенту"""
+    ticket = db.get_ticket(ticket_id)
+    if not ticket:
+        return "❌ Заявка не найдена"
+    
+    phone = ticket.get('client_phone')
+    if not phone:
+        return "❌ Номер телефона не указан в заявке"
+    
+    return f"📞 Позвоните клиенту: {phone}"
+
+
+def handle_show_details(user_id, ticket_id):
+    """Показать детали заявки"""
+    ticket = db.get_ticket(ticket_id)
+    if not ticket:
+        return "❌ Заявка не найдена"
+    
+    msg = f"📋 Заявка #{ticket.get('ticket_number', ticket_id)}\n\n"
+    msg += f"📍 {ticket.get('address')}\n"
+    msg += f"📝 {ticket.get('problem_description', 'Нет описания')}\n"
+    msg += f"⚡ Приоритет: {ticket.get('priority', 'обычный')}\n"
+    msg += f"📌 Статус: {ticket.get('status', 'новая')}\n"
+    
+    if ticket.get('client_phone'):
+        msg += f"📞 Телефон: {ticket.get('client_phone')}\n"
+    
+    return msg
+
+
+def handle_reject_ticket(user_id, ticket_id):
+    """Отклонить заявку"""
+    mechanic = get_mechanic_by_max(user_id)
+    if not mechanic:
+        return "❌ Вы не зарегистрированы"
+    
+    ticket = db.get_ticket(ticket_id)
+    if not ticket:
+        return "❌ Заявка не найдена"
+    
+    db.update_ticket_status(ticket_id, 'отменена', f"max_bot (отклонил {mechanic['name']})")
+    db.reject_ticket(ticket_id, mechanic['id'])
+    
+    return f"❌ Заявка #{ticket.get('ticket_number', ticket_id)} отклонена.\n\nСпасибо! Заявка вернётся в очередь."
+
+
+def handle_report_issue(user_id, ticket_id):
+    """Сообщить о проблеме"""
+    return f"⚠️ Опишите проблему с заявкой #{ticket_id}:\n\nОтправьте текст сообщения"
+
+
+def handle_request_photo(user_id, ticket_id):
+    """Запросить фото"""
+    ticket = db.get_ticket(ticket_id)
+    if not ticket:
+        return "❌ Заявка не найдена"
+    
+    phone = ticket.get('client_phone')
+    if phone:
+        db.add_comment(ticket_id, 'mechanic', f"📸 Запросил фото у клиента")
+        return f"📸 Запрос на фото отправлен клиенту"
+    else:
+        return "❌ Номер телефона не найден"
+
+
+def handle_request_comment(user_id, ticket_id):
+    """Запросить комментарий"""
+    return f"📝 Введите комментарий для заявки #{ticket_id}"
 
 
 def show_main_menu(user_id, mechanic):
@@ -446,12 +686,15 @@ if __name__ == '__main__':
     print("=" * 50)
     print(f"Bot URL: https://max.ru/id732606860856_bot")
     print("=" * 50)
+    print("🔄 Запуск обработки сообщений...")
+    sys.stdout.flush()
     
     while True:
         try:
-            updates = max_api('updates', {'timeout': 30})
+            updates = max_api_get('updates', {'timeout': 30, 'types': 'message_created,callback_query'})
             if 'error' in updates:
                 print(f"❌ Error: {updates.get('error')}")
+                time.sleep(5)
                 continue
             
             for update in updates.get('updates', []):

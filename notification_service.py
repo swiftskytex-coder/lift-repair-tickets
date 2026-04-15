@@ -11,16 +11,18 @@ import threading
 import time
 from datetime import datetime, timedelta
 from ticket_db import db
-from max_bot import send_message, get_main_keyboard
+from max_bot import send_message, get_main_keyboard, send_message_with_photo
 
 from PIL import Image
 import io
 
 
-def format_ticket_message(ticket):
+def format_ticket_message(ticket, include_photo=True):
     """Форматирование текста заявки для отправки"""
     if not ticket:
         return "Заявка не найдена"
+    
+    from ticket_db import db
     
     ticket_number = ticket.get('ticket_number', ticket.get('id'))
     address = ticket.get('address', 'Адрес не указан')
@@ -39,6 +41,14 @@ def format_ticket_message(ticket):
     msg += f"📝 {problem[:200]}\n"
     msg += f"⚡ Приоритет: {priority_emoji} {priority}\n"
     
+    # Добавляем фото подъезда
+    if include_photo:
+        elevator_id = ticket.get('elevator_id')
+        if elevator_id:
+            elevator = db.get_elevator(elevator_id)
+            if elevator and elevator.get('key_photo'):
+                msg += f"\n📷 Фото подъезда: {elevator['key_photo']}\n"
+    
     return msg
 
 
@@ -46,11 +56,17 @@ def get_ticket_keyboard(ticket_id, status='new'):
     """Клавиатура для работы с заявкой"""
     if status == 'new':
         return [
-            [{'type': 'callback', 'text': '✅ Принять в работу', 'payload': f'accept_{ticket_id}'}]
+            [{'type': 'callback', 'text': '✅ Принять', 'payload': f'accept_{ticket_id}'},
+             {'type': 'callback', 'text': '📞 Позвонить', 'payload': f'call_{ticket_id}'}],
+            [{'type': 'callback', 'text': '📋 Детали', 'payload': f'details_{ticket_id}'},
+             {'type': 'callback', 'text': '❌ Отклонить', 'payload': f'reject_{ticket_id}'}]
         ]
     elif status == 'in_progress':
         return [
-            [{'type': 'callback', 'text': '✅ Завершить', 'payload': f'complete_{ticket_id}'}]
+            [{'type': 'callback', 'text': '✅ Завершить', 'payload': f'complete_{ticket_id}'},
+             {'type': 'callback', 'text': '⚠️ Проблема', 'payload': f'issue_{ticket_id}'}],
+            [{'type': 'callback', 'text': '📸 Фото', 'payload': f'photo_{ticket_id}'},
+             {'type': 'callback', 'text': '📝 Комментарий', 'payload': f'comment_{ticket_id}'}]
         ]
     return None
 
@@ -416,10 +432,23 @@ async def notify_mechanics_about_ticket(ticket_id):
         if max_chat_id:
             # Формируем текст сообщения
             ticket = db.get_ticket(ticket_id)
-            msg = format_ticket_message(ticket)
+            msg = format_ticket_message(ticket, include_photo=False)
             
-            # Отправляем синхронно через Max API
-            result = send_message(max_chat_id, msg, get_ticket_keyboard(ticket_id, 'new'))
+            # Пробуем отправить фото подъезда
+            elevator_id = ticket.get('elevator_id')
+            photo_url = None
+            if elevator_id:
+                elevator = db.get_elevator(elevator_id)
+                if elevator and elevator.get('key_photo'):
+                    photo_url = elevator['key_photo']
+                    print(f"📷 Фото подъезда для заявки {ticket_id}: {photo_url}")
+                else:
+                    print(f"⚠️ Нет фото для лифта {elevator_id}")
+            else:
+                print(f"⚠️ Заявка {ticket_id} без elevator_id")
+            
+            # Отправляем через Max API
+            result = send_message_with_photo(max_chat_id, msg, get_ticket_keyboard(ticket_id, 'new'), photo_url)
             
             if result and 'error' not in result:
                 sent_count += 1

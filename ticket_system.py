@@ -9,6 +9,8 @@ import zipfile
 import io
 import sqlite3
 import os
+import logging
+import logging.handlers
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from flask import Flask, request, jsonify, render_template, send_from_directory, send_file
@@ -35,6 +37,30 @@ app = Flask(__name__, template_folder='templates', static_folder='uploads', stat
 app.config['JSON_AS_cii'] = False
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 app.jinja_env.auto_reload = True
+
+# Configure logging
+LOG_FILE = '/app/ticket_system.log'
+os.makedirs('/app', exist_ok=True)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s | %(levelname)-8s | %(message)s',
+    handlers=[
+        logging.handlers.RotatingFileHandler(LOG_FILE, maxBytes=5*1024*1024, backupCount=3),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger('ticket_system')
+
+# Create uploads directories at startup
+import os
+uploads_dir = os.path.join(app.root_path, 'uploads')
+os.makedirs(os.path.join(uploads_dir, 'entrances'), exist_ok=True)
+os.makedirs(os.path.join(uploads_dir, 'reports'), exist_ok=True)
+
+@app.route('/uploads/<path:filename>')
+def serve_uploaded_file(filename):
+    """Serve uploaded files"""
+    return send_from_directory(uploads_dir, filename)
 
 @app.template_filter('samara_time')
 def samara_time_filter(dt):
@@ -466,7 +492,7 @@ def tickets_list():
     tickets = db.search_tickets(filters=filters if filters else None)
     
     # Добавляем дату (день) для группировки
-    for ticket in recent_tickets:
+    for ticket in tickets:
         if ticket.get('created_at'):
             try:
                 created = datetime.fromisoformat(ticket['created_at'].replace('Z', '+00:00'))
@@ -1256,24 +1282,28 @@ def api_create_ticket():
         return jsonify({'success': False, 'error': 'Ошибка создания заявки в БД'}), 500
     
     # Отправка уведомления механикам через Telegram
-    if TELEGRAM_NOTIFICATIONS_ENABLED and ticket.get('elevator_id'):
+    if ticket.get('elevator_id'):
         try:
-            # Запускаем в отдельном потоке, чтобы не блокировать ответ
+            import asyncio
             import threading
+            import sys
             def send_notification():
                 try:
-                    print(f"🔔 Запуск отправки уведомления для заявки #{ticket['ticket_number']}")
-                    asyncio.run(notify_mechanics_about_ticket(ticket['id']))
+                    print(f"🔔 START: Заявка #{ticket['ticket_number']}", flush=True)
+                    sys.stdout.flush()
+                    result = asyncio.run(notify_mechanics_about_ticket(ticket['id']))
+                    print(f"🔔 DONE: {result}", flush=True)
+                    sys.stdout.flush()
                 except Exception as e:
-                    print(f"❌ Ошибка отправки уведомления: {e}")
-                    import traceback
-                    traceback.print_exc()
+                    print(f"❌ ERROR: {e}", flush=True)
+                    sys.stdout.flush()
             
-            notification_thread = threading.Thread(target=send_notification)
-            notification_thread.daemon = True
-            notification_thread.start()
-            
-            print(f"✅ Уведомление отправлено механикам для заявки #{ticket['ticket_number']}")
+            t = threading.Thread(target=send_notification)
+            t.daemon = True
+            t.start()
+            print(f"✅ Thread started for #{ticket['ticket_number']}", flush=True)
+        except Exception as e:
+            print(f"❌ FAIL: {e}", flush=True)
         except Exception as e:
             print(f"❌ Ошибка запуска отправки уведомления: {e}")
     
@@ -1700,7 +1730,7 @@ def api_upload_elevator_photo():
     
     # Создаем директорию для фото подъездов
     import os
-    upload_dir = 'static/uploads/entrances'
+    upload_dir = os.path.join(app.root_path, 'uploads', 'entrances')
     os.makedirs(upload_dir, exist_ok=True)
     
     # Сохраняем файл
@@ -2065,13 +2095,18 @@ if __name__ == '__main__':
     def max_webhook():
         """Webhook для Max бота"""
         import sys, os
+        import logging
+        logging.basicConfig(level=logging.INFO)
         
         # Try to get JSON
         data = request.get_json(force=True, silent=True)
+        print(f"🌐 WEBHOOK received: {data}", flush=True)
+        
         if not data:
             return os.getenv('MAX_CONFIRMATION_CODE', '')
         
         event_type = data.get('update_type')
+        print(f"🌐 Event type: {event_type}", flush=True)
         
         # Confirmation
         if event_type == 'confirmation':
@@ -2082,26 +2117,18 @@ if __name__ == '__main__':
             msg = data.get('message', {})
             user_id = msg.get('sender', {}).get('user_id')
             text = msg.get('body', {}).get('text', '')
+            print(f"📩 WEBHOOK message: user={user_id}, text={text[:50]}", flush=True)
             
             # Set token for max_bot
             max_token = os.getenv('MAX_BOT_TOKEN') or os.environ.get('MAX_BOT_TOKEN', '') or 'f9LHodD0cOJr6-3caEEtEU-KqU42RaPXLpz3wkHbJMQc0vANY8fVYJfXn0bsZh7IdSq0sNqBkyGwfySDPS8l'
             os.environ['MAX_BOT_TOKEN'] = max_token
             
             try:
-                mechanic = db.get_mechanic_by_max(user_id)
+                from max_bot import process_message
+                process_message(user_id, text)
                 
-                if mechanic:
-                    from max_bot import get_ai_context, ask_ai, send_message, get_ai_keyboard
-                    
-                    context = get_ai_context(user_id)
-                    response = ask_ai(text, context)
-                    result = send_message(user_id, f"🤖 AI\n\n{response}", get_ai_keyboard())
-                else:
-                    from max_bot import send_message, get_main_keyboard
-                    send_message(user_id, "👋 Отправьте номер телефона:\n\nПример: +79991234567", get_main_keyboard())
-                    
             except Exception as e:
-                print(f"Webhook error: {e}")
+                print(f"❌ Webhook error: {e}")
         
         # Bot started
         elif event_type == 'bot_started':
@@ -2110,8 +2137,16 @@ if __name__ == '__main__':
         
         # Callback
         elif event_type == 'callback_query':
-            from max_bot import process_callback
-            process_callback(data.get('callback', {}).get('user_id'), data.get('callback', {}).get('payload', ''))
+            user_id = data.get('callback', {}).get('user_id')
+            payload = data.get('callback', {}).get('payload', '')
+            print(f"🔘 WEBHOOK callback: user={user_id}, payload={payload}", flush=True)
+            logger.info(f"🔘 WEBHOOK callback: user={user_id}, payload={payload}")
+            try:
+                from max_bot import process_callback
+                process_callback(user_id, payload)
+            except Exception as e:
+                print(f"❌ Callback error: {e}")
+                logger.error(f"❌ Callback error: {e}")
         
         return jsonify({'ok': True})
     

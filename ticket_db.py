@@ -116,6 +116,12 @@ class TicketDatabase:
             except sqlite3.OperationalError:
                 pass  # Колонка уже существует
             
+            # Миграция: добавляем фото подъезда
+            try:
+                cursor.execute('ALTER TABLE elevators ADD COLUMN key_photo TEXT')
+            except sqlite3.OperationalError:
+                pass  # Колонка уже существует
+            
             # Таблица механиков
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS mechanics (

@@ -310,6 +310,94 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["ticket_id", "assigned_to"]
             }
+        ),
+        
+        # Инструменты для механика
+        Tool(
+            name="get_mechanic_tickets",
+            description="Получить заявки механика по номеру телефона",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "phone": {
+                        "type": "string",
+                        "description": "Номер телефона механика (например: +79001234567)"
+                    }
+                },
+                "required": ["phone"]
+            }
+        ),
+        
+        Tool(
+            name="accept_ticket",
+            description="Принять заявку в работу (для механика)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "ticket_id": {
+                        "type": "integer",
+                        "description": "ID заявки"
+                    },
+                    "phone": {
+                        "type": "string",
+                        "description": "Номер телефона механика"
+                    }
+                },
+                "required": ["ticket_id", "phone"]
+            }
+        ),
+        
+        Tool(
+            name="complete_ticket",
+            description="Завершить заявку (для механика)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "ticket_id": {
+                        "type": "integer",
+                        "description": "ID заявки"
+                    },
+                    "phone": {
+                        "type": "string",
+                        "description": "Номер телефона механика"
+                    },
+                    "work_done": {
+                        "type": "string",
+                        "description": "Описание выполненных работ"
+                    }
+                },
+                "required": ["ticket_id", "phone"]
+            }
+        ),
+        
+        Tool(
+            name="get_mechanic_info",
+            description="Получить информацию о механике по телефону",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "phone": {
+                        "type": "string",
+                        "description": "Номер телефона"
+                    }
+                },
+                "required": ["phone"]
+            }
+        ),
+        
+        Tool(
+            name="get_mechanic_elevators",
+            description="Получить лифты закрепленные за механиком",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "phone": {
+                        "type": "string",
+                        "description": "Номер телефона механика"
+                    }
+                },
+                "required": ["phone"]
+            }
         )
     ]
 
@@ -428,80 +516,135 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
             ticket = db.update_ticket_status(ticket_id, new_status, "AI Assistant", notes)
             
             if ticket:
+return [TextContent(
+                type="text",
+                text=f"✅ Заявка #{ticket['ticket_number']} назначена на: {assigned_to}"
+            )]
+        
+        # ==== Инструменты для механика ====
+        elif name == "get_mechanic_tickets":
+            # Получить заявки механика
+            phone = arguments["phone"]
+            mechanic = db.get_mechanic_by_phone(phone)
+            
+            if not mechanic:
                 return [TextContent(
                     type="text",
-                    text=f"✅ Статус заявки #{ticket['ticket_number']} обновлён на: {new_status}"
+                    text=f"❌ Механик с телефоном {phone} не найден"
                 )]
-            else:
-                return [TextContent(
-                    type="text",
-                    text=f"❌ Заявка с ID {ticket_id} не найдена"
-                )]
+            
+            tickets = db.get_all_mechanic_tickets(mechanic['id'])
+            
+            text = f"🛠️ Заявки механика: {mechanic['name']}\n{'='*50}\n\n"
+            
+            active = [t for t in tickets if t.get('status') in ('новая', 'в работе')]
+            if active:
+                text += f"🔴 Активных: {len(active)}\n"
+                for t in active:
+                    text += f"  #{t['ticket_number']} | {t['status']} | {t['address'][:40]}\n"
+                text += "\n"
+            
+            completed = [t for t in tickets if t.get('status') == 'выполнена']
+            if completed:
+                text += f"✅ Выполнено: {len(completed)}"
+            
+            return [TextContent(type="text", text=text if text else "Заявок нет")]
         
-        elif name == "get_statistics":
-            # Получение статистики
-            stats = db.get_statistics()
-            
-            text = f"📊 Статистика заявок\n{'='*50}\n\n" + \
-                   f"Всего заявок: {stats['total']}\n" + \
-                   f"Новых: {stats['new']}\n" + \
-                   f"В работе: {stats['in_progress']}\n" + \
-                   f"Выполнено: {stats['completed']}\n\n" + \
-                   f"По приоритетам:\n"
-            
-            for priority, count in stats['by_priority'].items():
-                text += f"  • {priority}: {count}\n"
-            
-            text += f"\nПо источникам:\n"
-            for source, count in stats['by_source'].items():
-                text += f"  • {source}: {count}\n"
-            
-            return [TextContent(type="text", text=text)]
-        
-        elif name == "add_comment":
-            # Добавление комментария
+        elif name == "accept_ticket":
+            # Принять заявку
             ticket_id = arguments["ticket_id"]
-            text = arguments["text"]
-            author = arguments.get("author", "AI Assistant")
+            phone = arguments["phone"]
+            mechanic = db.get_mechanic_by_phone(phone)
+            
+            if not mechanic:
+                return [TextContent(
+                    type="text",
+                    text=f"❌ Механик не найден"
+                )]
             
             ticket = db.get_ticket(ticket_id)
             if not ticket:
                 return [TextContent(
                     type="text",
-                    text=f"❌ Заявка с ID {ticket_id} не найдена"
+                    text=f"❌ Заявка не найдена"
                 )]
             
-            comment_id = db.add_comment(ticket_id, author, text)
+            db.update_ticket_status(ticket_id, 'в работе', f'max_bot (принял {mechanic["name"]})')
+            db.assign_ticket(ticket_id, mechanic['id'])
             
             return [TextContent(
                 type="text",
-                text=f"✅ Комментарий добавлен к заявке #{ticket['ticket_number']}"
+                text=f"✅ Заявка #{ticket['ticket_number']} принята в работу!\n\n📍 {ticket['address']}\n📝 {ticket['problem_description'][:100]}..."
             )]
         
-        elif name == "assign_ticket":
-            # Назначение исполнителя
+        elif name == "complete_ticket":
+            # Завершить заявку
             ticket_id = arguments["ticket_id"]
-            assigned_to = arguments["assigned_to"]
-            scheduled_date = arguments.get("scheduled_date")
+            phone = arguments["phone"]
+            work_done = arguments.get("work_done", "")
+            mechanic = db.get_mechanic_by_phone(phone)
+            
+            if not mechanic:
+                return [TextContent(
+                    type="text",
+                    text=f"❌ Механик не найден"
+                )]
             
             ticket = db.get_ticket(ticket_id)
             if not ticket:
                 return [TextContent(
                     type="text",
-                    text=f"❌ Заявка с ID {ticket_id} не найдена"
+                    text=f"❌ Заявка не найдена"
                 )]
             
-            update_data = {
-                "assigned_to": assigned_to
-            }
-            if scheduled_date:
-                update_data["scheduled_date"] = scheduled_date
+            db.update_ticket_status(ticket_id, 'выполнена', f'max_bot (завершил {mechanic["name"]})')
             
-            db.update_ticket(ticket_id, update_data, "AI Assistant")
+            if work_done:
+                db.add_comment(ticket_id, 'mechanic', f'📝 {work_done}')
             
-            text = f"✅ Заявка #{ticket['ticket_number']} назначена на: {assigned_to}"
-            if scheduled_date:
-                text += f"\n📅 Запланировано на: {scheduled_date}"
+            return [TextContent(
+                type="text",
+                text=f"✅ Заявка #{ticket['ticket_number']} завершена!"
+            )]
+        
+        elif name == "get_mechanic_info":
+            # Информация о механике
+            phone = arguments["phone"]
+            mechanic = db.get_mechanic_by_phone(phone)
+            
+            if not mechanic:
+                return [TextContent(
+                    type="text",
+                    text=f"❌ Механик не найден"
+                )]
+            
+            text = f"🛠️ Механик: {mechanic['name']}\n" + \
+                  f"📞 Телефон: {mechanic['phone']}\n" + \
+                  f"✅ Статус: {mechanic['status']}\n" + \
+                  f"🆔 ID: {mechanic['id']}"
+            
+            return [TextContent(type="text", text=text)]
+        
+        elif name == "get_mechanic_elevators":
+            # Лифты механика
+            phone = arguments["phone"]
+            mechanic = db.get_mechanic_by_phone(phone)
+            
+            if not mechanic:
+                return [TextContent(
+                    type="text",
+                    text=f"❌ Механик не найден"
+                )]
+            
+            elevators = db.get_mechanic_elevators(mechanic['id'])
+            
+            text = f"🛗 Лифты механика {mechanic['name']}\n{'='*50}\n\n"
+            
+            for e in elevators:
+                text += f"• {e['elevator_id']}: {e['address']}\n"
+            
+            if not elevators:
+                text += "Лифтов не закреплено"
             
             return [TextContent(type="text", text=text)]
         
