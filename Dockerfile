@@ -19,7 +19,9 @@ RUN pip install --no-cache-dir \
     gunicorn \
     pillow \
     requests \
-    python-dotenv
+    python-dotenv \
+    psycopg2-binary \
+    sqlalchemy
 
 # Copy application files (only needed ones)
 COPY ticket_system.py /app/
@@ -60,5 +62,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8082/mcp/tools || exit 1
 
-# Run all Flask servers and Max bot
-CMD sh -c "python ticket_system.py & python simple_mcp.py & python tickets_api.py & python max_bot.py & wait"
+# Run all Flask servers (no polling - webhook only)
+CMD sh -c "python ticket_system.py & python simple_mcp.py & python tickets_api.py & wait"
