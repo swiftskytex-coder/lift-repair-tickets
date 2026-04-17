@@ -39,8 +39,7 @@ app.config['TEMPLATES_AUTO_RELOAD'] = True
 app.jinja_env.auto_reload = True
 
 # Configure logging
-LOG_FILE = '/app/ticket_system.log'
-os.makedirs('/app', exist_ok=True)
+LOG_FILE = os.environ.get('LOG_FILE', 'ticket_system.log')
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s | %(levelname)-8s | %(message)s',
@@ -171,7 +170,7 @@ def index():
                 conn = db.get_connection()
                 cursor = conn.cursor()
                 cursor.execute(
-                    "SELECT text FROM comments WHERE ticket_id = ? AND text LIKE '[ФОТО]%' LIMIT 4",
+                    "SELECT text FROM comments WHERE ticket_id = %s AND text LIKE '[ФОТО]%%' LIMIT 4",
                     (ticket_id,)
                 )
                 photos = [row[0].replace('[ФОТО] ', '') for row in cursor.fetchall()]
@@ -184,7 +183,7 @@ def index():
                     conn = db.get_connection()
                     cursor = conn.cursor()
                     cursor.execute(
-                        "SELECT text FROM comments WHERE ticket_id = ? AND author = 'mechanic' AND text LIKE '📝%' ORDER BY created_at DESC LIMIT 1",
+                        "SELECT text FROM comments WHERE ticket_id = %s AND author = 'mechanic' AND text LIKE '📝%%' ORDER BY created_at DESC LIMIT 1",
                         (ticket_id,)
                     )
                     work_row = cursor.fetchone()
@@ -525,7 +524,7 @@ def tickets_list():
                 cursor = conn.cursor()
                 # Фото
                 cursor.execute(
-                    "SELECT text FROM comments WHERE ticket_id = ? AND text LIKE '[ФОТО]%' LIMIT 4",
+                    "SELECT text FROM comments WHERE ticket_id = %s AND text LIKE '[ФОТО]%%' LIMIT 4",
                     (ticket_id,)
                 )
                 photos = [row[0].replace('[ФОТО] ', '') for row in cursor.fetchall()]
@@ -533,7 +532,7 @@ def tickets_list():
                     ticket['photos'] = photos
                 # Работы
                 cursor.execute(
-                    "SELECT text FROM comments WHERE ticket_id = ? AND author = 'mechanic' AND text LIKE '📝%' ORDER BY created_at DESC LIMIT 1",
+                    "SELECT text FROM comments WHERE ticket_id = %s AND author = 'mechanic' AND text LIKE '📝%%' ORDER BY created_at DESC LIMIT 1",
                     (ticket_id,)
                 )
                 work_row = cursor.fetchone()
@@ -566,7 +565,7 @@ def ticket_detail(ticket_id):
             SELECT m.name, m.phone, tm.status, tm.sent_at, tm.responded_at
             FROM ticket_mechanics tm
             JOIN mechanics m ON tm.mechanic_id = m.id
-            WHERE tm.ticket_id = ?
+            WHERE tm.ticket_id = %s
             ORDER BY tm.sent_at DESC
         ''', (ticket_id,))
         for row in cursor.fetchall():
@@ -1112,7 +1111,7 @@ def api_tickets_html():
                 conn = db.get_connection()
                 cursor = conn.cursor()
                 cursor.execute(
-                    "SELECT text FROM comments WHERE ticket_id = ? AND text LIKE '[ФОТО]%' LIMIT 4",
+                    "SELECT text FROM comments WHERE ticket_id = %s AND text LIKE '[ФОТО]%%' LIMIT 4",
                     (ticket_id,)
                 )
                 photos = [row[0].replace('[ФОТО] ', '') for row in cursor.fetchall()]
@@ -1125,7 +1124,7 @@ def api_tickets_html():
                     conn = db.get_connection()
                     cursor = conn.cursor()
                     cursor.execute(
-                        "SELECT text FROM comments WHERE ticket_id = ? AND text LIKE '[ВИДЕО]%' LIMIT 2",
+                        "SELECT text FROM comments WHERE ticket_id = %s AND text LIKE '[ВИДЕО]%%' LIMIT 2",
                         (ticket_id,)
                     )
                     videos = [row[0].replace('[ВИДЕО] ', '') for row in cursor.fetchall()]
@@ -1140,7 +1139,7 @@ def api_tickets_html():
                     conn = db.get_connection()
                     cursor = conn.cursor()
                     cursor.execute(
-                        "SELECT text FROM comments WHERE ticket_id = ? AND author = 'mechanic' AND text LIKE '📝%' ORDER BY created_at DESC LIMIT 1",
+                        "SELECT text FROM comments WHERE ticket_id = %s AND author = 'mechanic' AND text LIKE '📝%%' ORDER BY created_at DESC LIMIT 1",
                         (ticket_id,)
                     )
                     work_row = cursor.fetchone()
@@ -1579,7 +1578,7 @@ def api_get_elevators():
     query = request.args.get('q', '')
     limit = request.args.get('limit', 200, type=int)
     
-    elevators = db.search_elevators(query=query if query else None, limit=limit)
+    elevators = db.search_elevators(query_text=query if query else None, limit=limit)
     
     return jsonify({
         'success': True,
@@ -1634,7 +1633,11 @@ def api_get_elevator(elevator_id):
 def api_update_elevator(elevator_id):
     """Обновление данных лифта"""
     data = request.get_json()
-    
+    logger.info(f"PUT /api/elevators/{elevator_id} data={data}")
+
+    # elevator_id не обновляем через PUT
+    data.pop('elevator_id', None)
+
     elevator = db.update_elevator(elevator_id, data)
     
     if not elevator:
@@ -2062,25 +2065,80 @@ def api_restore_backup():
 # Запуск сервера
 # ═══════════════════════════════════════════════════════════════
 
+# API для настроек
+@app.route('/api/settings', methods=['GET'])
+def api_get_settings():
+    """Получение всех настроек"""
+    settings = db.get_all_settings()
+    return jsonify(settings)
+
+
+@app.route('/api/settings', methods=['POST'])
+def api_save_settings():
+    """Сохранение настроек"""
+    data = request.get_json()
+    for key, value in data.items():
+        db.set_setting(key, str(value))
+    return jsonify({'success': True})
+
+
+# Webhook для Max бота
+@app.route('/max/webhook', methods=['GET', 'POST'])
+def max_webhook():
+    """Webhook для Max бота"""
+    data = request.get_json(force=True, silent=True)
+    print(f"🌐 WEBHOOK received: {data}", flush=True)
+
+    if not data:
+        return os.getenv('MAX_CONFIRMATION_CODE', '')
+
+    event_type = data.get('update_type')
+    print(f"🌐 Event type: {event_type}", flush=True)
+
+    # Confirmation
+    if event_type == 'confirmation':
+        return os.getenv('MAX_CONFIRMATION_CODE', ''), 200, {'Content-Type': 'text/plain'}
+
+    # Message
+    if event_type == 'message_created':
+        msg = data.get('message', {})
+        user_id = msg.get('sender', {}).get('user_id')
+        text = msg.get('body', {}).get('text', '')
+        print(f"📩 WEBHOOK message: user={user_id}, text={text[:50]}", flush=True)
+        try:
+            from max_bot import process_message
+            process_message(user_id, text)
+        except Exception as e:
+            print(f"❌ Webhook error: {e}")
+            import traceback
+            traceback.print_exc()
+
+    # Bot started
+    elif event_type == 'bot_started':
+        from max_bot import send_message, get_main_keyboard
+        send_message(data.get('user', {}).get('user_id'), "👋 Привет! Отправьте номер телефона:", get_main_keyboard())
+
+    # Callback (Max использует message_callback)
+    elif event_type in ('callback_query', 'message_callback'):
+        callback = data.get('callback', {})
+        user_id = callback.get('user', {}).get('user_id') or callback.get('user_id')
+        payload = callback.get('payload', '')
+        print(f"🔘 WEBHOOK callback: user={user_id}, payload={payload}", flush=True)
+        try:
+            from max_bot import process_callback
+            process_callback(user_id, payload)
+        except Exception as e:
+            import traceback
+            print(f"❌ Callback error: {e}", flush=True)
+            traceback.print_exc()
+
+    return jsonify({'ok': True})
+
+
 if __name__ == '__main__':
     from notification_service import start_scheduler
     start_scheduler()
-    
-    # API для настроек
-    @app.route('/api/settings', methods=['GET'])
-    def api_get_settings():
-        """Получение всех настроек"""
-        settings = db.get_all_settings()
-        return jsonify(settings)
-    
-    @app.route('/api/settings', methods=['POST'])
-    def api_save_settings():
-        """Сохранение настроек"""
-        data = request.get_json()
-        for key, value in data.items():
-            db.set_setting(key, str(value))
-        return jsonify({'success': True})
-    
+
     print("=" * 60)
     print("🛠️  Система заявок на ремонт лифтов")
     print("=" * 60)
@@ -2089,70 +2147,11 @@ if __name__ == '__main__':
     print("🏥 Health check: http://localhost:8081/api/health")
     print("⏰ Утренняя рассылка: 8:00 (пн-пт)")
     print("=" * 60)
-    
-# Webhook для Max бота
-    @app.route('/max/webhook', methods=['GET', 'POST'])
-    def max_webhook():
-        """Webhook для Max бота"""
-        import sys, os
-        import logging
-        logging.basicConfig(level=logging.INFO)
-        
-        # Try to get JSON
-        data = request.get_json(force=True, silent=True)
-        print(f"🌐 WEBHOOK received: {data}", flush=True)
-        
-        if not data:
-            return os.getenv('MAX_CONFIRMATION_CODE', '')
-        
-        event_type = data.get('update_type')
-        print(f"🌐 Event type: {event_type}", flush=True)
-        
-        # Confirmation
-        if event_type == 'confirmation':
-            return os.getenv('MAX_CONFIRMATION_CODE', ''), 200, {'Content-Type': 'text/plain'}
-        
-        # Message
-        if event_type == 'message_created':
-            msg = data.get('message', {})
-            user_id = msg.get('sender', {}).get('user_id')
-            text = msg.get('body', {}).get('text', '')
-            print(f"📩 WEBHOOK message: user={user_id}, text={text[:50]}", flush=True)
-            
-            # Set token for max_bot
-            max_token = os.getenv('MAX_BOT_TOKEN') or os.environ.get('MAX_BOT_TOKEN', '') or 'f9LHodD0cOJr6-3caEEtEU-KqU42RaPXLpz3wkHbJMQc0vANY8fVYJfXn0bsZh7IdSq0sNqBkyGwfySDPS8l'
-            os.environ['MAX_BOT_TOKEN'] = max_token
-            
-            try:
-                from max_bot import process_message
-                process_message(user_id, text)
-                
-            except Exception as e:
-                print(f"❌ Webhook error: {e}")
-        
-        # Bot started
-        elif event_type == 'bot_started':
-            from max_bot import send_message, get_main_keyboard
-            send_message(data.get('user', {}).get('user_id'), "👋 Привет! Отправьте номер телефона:", get_main_keyboard())
-        
-        # Callback
-        elif event_type == 'callback_query':
-            user_id = data.get('callback', {}).get('user_id')
-            payload = data.get('callback', {}).get('payload', '')
-            print(f"🔘 WEBHOOK callback: user={user_id}, payload={payload}", flush=True)
-            logger.info(f"🔘 WEBHOOK callback: user={user_id}, payload={payload}")
-            try:
-                from max_bot import process_callback
-                process_callback(user_id, payload)
-            except Exception as e:
-                print(f"❌ Callback error: {e}")
-                logger.error(f"❌ Callback error: {e}")
-        
-        return jsonify({'ok': True})
-    
+
     app.run(
         host='0.0.0.0',
         port=8081,
         debug=False,
-        use_reloader=False
+        use_reloader=True,
+        reloader_type='stat'
     )

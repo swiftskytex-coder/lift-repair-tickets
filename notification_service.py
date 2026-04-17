@@ -1,11 +1,9 @@
 """
-Интеграция заявок с Telegram
+Интеграция заявок с Max Bot
 Автоматическая отправка уведомлений механикам
 """
 
-import sys
-sys.path.insert(0, '/Users/swiftpanaev/KIRO/test4')
-
+import os
 import asyncio
 import threading
 import time
@@ -155,145 +153,94 @@ def send_morning_summary_to_linear_mechanics():
 
 
 async def _send_summaries_async(tickets_by_mechanic):
-    """Асинхронная отправка сводок"""
-    bot = Bot(token=BOT_TOKEN)
-    
+    """Асинхронная отправка сводок через Max Bot"""
     for mech_id, data in tickets_by_mechanic.items():
         mechanic = data['mechanic']
         tickets = data['tickets']
         max_chat_id = mechanic.get('max_chat_id')
-        
+
         if not max_chat_id:
             continue
-        
+
         today = datetime.now().strftime('%d.%m.%Y')
-        
         new_tickets = [t for t in tickets if t.get('status') == 'новая']
         in_progress_tickets = [t for t in tickets if t.get('status') == 'в работе']
         completed_tickets = [t for t in tickets if t.get('status') == 'выполнена']
-        
+
         message = f"📋 *Утренняя сводка заявок на {today}*\n\n"
         message += f"📊 Всего: {len(tickets)} | 🆕 Новых: {len(new_tickets)} | 🔧 В работе: {len(in_progress_tickets)} | ✅ Выполнено: {len(completed_tickets)}\n\n"
-        
-        if new_tickets:
-            message += "━━━━━━━━━━━━━━━━━━━━━━\n"
-            message += "🆕 *НОВЫЕ ЗАЯВКИ*\n"
-            message += "━━━━━━━━━━━━━━━━━━━━━━\n"
-            for i, ticket in enumerate(new_tickets, 1):
-                address = ticket.get('address', 'Адрес не указан')
-                problem = ticket.get('problem_description', '')
-                problem_short = problem[:50] + '...' if len(problem) > 50 else problem
-                created_at = ticket.get('created_at', '')
-                if created_at:
-                    try:
-                        created_at = created_at[11:16]
-                    except:
-                        created_at = ''
-                
-                message += f"{i}. *{address}*"
-                if created_at:
-                    message += f" 🕐 {created_at}"
-                message += f"\n   📝 {problem_short}\n\n"
-        
-        if in_progress_tickets:
-            message += "━━━━━━━━━━━━━━━━━━━━━━\n"
-            message += "🔧 *В РАБОТЕ*\n"
-            message += "━━━━━━━━━━━━━━━━━━━━━━\n"
-            for i, ticket in enumerate(in_progress_tickets, 1):
-                address = ticket.get('address', 'Адрес не указан')
-                problem = ticket.get('problem_description', '')
-                problem_short = problem[:50] + '...' if len(problem) > 50 else problem
-                created_at = ticket.get('created_at', '')
-                if created_at:
-                    try:
-                        created_at = created_at[11:16]
-                    except:
-                        created_at = ''
-                
-                message += f"{i}. *{address}*"
-                if created_at:
-                    message += f" 🕐 {created_at}"
-                message += f"\n   📝 {problem_short}\n\n"
-        
-        keyboard = [[InlineKeyboardButton("📋 Полный отчёт", url="http://tickets.lift-system.crazedns.ru/")]]
-        
+
+        for label, group in [("🆕 *НОВЫЕ ЗАЯВКИ*", new_tickets), ("🔧 *В РАБОТЕ*", in_progress_tickets)]:
+            if group:
+                message += f"━━━━━━━━━━━━━━━━━━━━━━\n{label}\n━━━━━━━━━━━━━━━━━━━━━━\n"
+                for i, ticket in enumerate(group, 1):
+                    address = ticket.get('address', 'Адрес не указан')
+                    problem = ticket.get('problem_description', '')
+                    problem_short = problem[:50] + '...' if len(problem) > 50 else problem
+                    created_at = ticket.get('created_at', '')
+                    time_str = created_at[11:16] if created_at else ''
+                    message += f"{i}. *{address}*"
+                    if time_str:
+                        message += f" 🕐 {time_str}"
+                    message += f"\n   📝 {problem_short}\n\n"
+
         try:
-            await bot.send_message(
-                chat_id=max_chat_id,
-                text=message,
-                parse_mode='Markdown',
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-            
+            send_message(max_chat_id, message)
             for ticket in completed_tickets:
-                await _send_completed_ticket_with_photo(bot, max_chat_id, ticket)
-            
+                await _send_completed_ticket_with_photo(max_chat_id, ticket)
             print(f"✅ Отправлена сводка механику {mechanic['name']}: {len(tickets)} заявок")
         except Exception as e:
             print(f"❌ Не удалось отправить {mechanic['name']}: {e}")
 
 
-async def _send_completed_ticket_with_photo(bot, max_chat_id, ticket):
+async def _send_completed_ticket_with_photo(max_chat_id, ticket):
     """Отправка выполненной заявки с фото"""
     ticket_id = ticket.get('id')
     address = ticket.get('address', 'Адрес не указан')
     problem = ticket.get('problem_description', '')
     problem_short = problem[:50] + '...' if len(problem) > 50 else problem
     created_at = ticket.get('created_at', '')
-    if created_at:
-        try:
-            created_at = created_at[11:16]
-        except:
-            created_at = ''
-    
+    time_str = created_at[11:16] if created_at else ''
+
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
-        
+
         cursor.execute(
-            "SELECT text FROM comments WHERE ticket_id = ? AND author = 'mechanic' AND text LIKE '[ФОТО]%'",
+            "SELECT text FROM comments WHERE ticket_id = %s AND author = 'mechanic' AND text LIKE '[ФОТО]%%'",
             (ticket_id,)
         )
         photos = [row[0].replace('[ФОТО] ', '') for row in cursor.fetchall()]
-        
+
         cursor.execute(
-            "SELECT text FROM comments WHERE ticket_id = ? AND author = 'mechanic' AND text LIKE '📝%'",
+            "SELECT text FROM comments WHERE ticket_id = %s AND author = 'mechanic' AND text LIKE '📝%%'",
             (ticket_id,)
         )
         work_texts = [row[0].replace('📝 ', '') for row in cursor.fetchall()]
         work_text = '\n'.join(work_texts) if work_texts else ''
-        conn.close()
-        
+
         msg = f"✅ *{address}*"
-        if created_at:
-            msg += f" 🕐 {created_at}"
+        if time_str:
+            msg += f" 🕐 {time_str}"
         msg += f"\n📝 {problem_short}"
         if work_text:
             msg += f"\n🔧 {work_text[:200]}"
             if len(work_text) > 200:
                 msg += "..."
-        
+
         if photos:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
             photo_path = photos[0]
-            full_path = f"/Users/swiftpanaev/KIRO/test4/{photo_path}"
+            full_path = os.path.join(base_dir, photo_path.lstrip('/'))
             try:
                 thumb = create_thumbnail(full_path)
                 if thumb:
-                    await bot.send_photo(
-                        chat_id=max_chat_id,
-                        photo=thumb,
-                        caption=msg,
-                        filename="photo.jpg"
-                    )
+                    send_message_with_photo(max_chat_id, msg, None, full_path)
                     return
             except Exception as e:
                 print(f"⚠️ Ошибка отправки фото {photo_path}: {e}")
-        
-        await bot.send_message(
-            chat_id=max_chat_id,
-            text=msg,
-            parse_mode='Markdown'
-        )
+
+        send_message(max_chat_id, msg)
     except Exception as e:
         print(f"⚠️ Ошибка получения данных о заявке {ticket_id}: {e}")
 

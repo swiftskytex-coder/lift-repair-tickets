@@ -28,11 +28,19 @@ services:
         condition: service_healthy
     environment:
       - DATABASE_URL=postgresql://liftuser:liftpass123@postgres:5432/lift_repair
-      - MAX_BOT_TOKEN=f9LHodD0cOJr6-3caEEtEU-KqU42RaPXLpz3wkHbJMQc0vANY8fVYJfXn0bsZh7IdSq0sNqBkyGwfySDPS8l
-      - LM_STUDIO_URL=http://host.docker.internal:1234
+      - MAX_BOT_TOKEN=${MAX_BOT_TOKEN}
+      - LM_STUDIO_URL=http://192.168.0.38:1234/v1/chat/completions
+      - FLASK_ENV=development
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./uploads:/app/uploads
       - ./instance:/app/instance
+      - ./ticket_system.py:/app/ticket_system.py
+      - ./ticket_db.py:/app/ticket_db.py
+      - ./max_bot.py:/app/max_bot.py
+      - ./notification_service.py:/app/notification_service.py
+      - ./templates:/app/templates
 
 volumes:
   postgres_data:

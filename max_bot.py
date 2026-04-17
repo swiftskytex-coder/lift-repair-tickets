@@ -4,9 +4,6 @@ Max Bot для механиков
 AI-ассистент для помощи с диагностикой и ремонтом
 """
 
-import sys
-sys.path.insert(0, '/Users/swiftpanaev/KIRO/test4')
-
 import os
 import json
 import time
@@ -17,8 +14,7 @@ from PIL import Image
 from logging.handlers import RotatingFileHandler
 
 # Настройка логгирования
-LOG_FILE = '/app/max_bot.log'
-os.makedirs('/app', exist_ok=True)
+LOG_FILE = os.environ.get('LOG_FILE', 'max_bot.log')
 
 logging.basicConfig(
     level=logging.INFO,
@@ -35,12 +31,11 @@ from ticket_db import db
 MAX_API_URL = 'https://platform-api.max.ru'
 
 def get_max_token():
-    """Get token from environment, with fallback"""
-    return os.getenv('MAX_BOT_TOKEN') or os.environ.get('MAX_BOT_TOKEN', '') or 'f9LHodD0cOJr6-3caEEtEU-KqU42RaPXLpz3wkHbJMQc0vANY8fVYJfXn0bsZh7IdSq0sNqBkyGwfySDPS8l'
-
-def get_bot_token():
-    """Get bot token for uploads API"""
-    return os.getenv('MAX_BOT_TOKEN') or 'f9LHodD0cOJr6-3caEEtEU-KqU42RaPXLpz3wkHbJMQc0vANY8fVYJfXn0bsZh7IdSq0sNqBkyGwfySDPS8l'
+    """Get token from environment"""
+    token = os.getenv('MAX_BOT_TOKEN')
+    if not token:
+        raise RuntimeError("MAX_BOT_TOKEN environment variable is not set")
+    return token
 
 
 MAX_BOT_TOKEN = get_max_token()
@@ -51,9 +46,9 @@ def send_message_with_photo(user_id, text, keyboard=None, photo_url=None):
     return send_message(user_id, text, keyboard)
 
 # LM Studio AI Configuration
-LM_STUDIO_URL = "http://192.168.0.38:1234/v1/chat/completions"
-LM_API_TOKEN = "sk-lm-M6IENXKx:sL6tLQPn6pF792Bv2jQ2"
-LLM_MODEL = "qwen/qwen2.5-3b-instruct"
+LM_STUDIO_URL = os.getenv('LM_STUDIO_URL', 'http://192.168.0.38:1234/v1/chat/completions')
+LM_API_TOKEN = os.getenv('LM_API_TOKEN', 'sk-lm-M6IENXKx:sL6tLQPn6pF792Bv2jQ2')
+LLM_MODEL = os.getenv('LLM_MODEL', 'qwen2.5-coder-1.5b-instruct-mlx')
 
 # System prompt for AI assistant
 AI_SYSTEM_PROMPT = """Ты - AI-ассистент для лифтового механика.
@@ -151,24 +146,6 @@ def get_ai_context(user_id):
     return context
 
 
-def max_api(method, params=None):
-    """Вызов Max API"""
-    if params is None:
-        params = {}
-    headers = {'Authorization': MAX_BOT_TOKEN}
-    try:
-        response = requests.post(
-            f"{MAX_API_URL}/{method}",
-            headers=headers,
-            json=params,
-            timeout=10
-        )
-        return response.json()
-    except Exception as e:
-        print(f"Max API error: {e}")
-        return {'error': str(e)}
-
-
 def max_api_get(method, params=None):
     """Вызов Max API через GET для long polling"""
     if params is None:
@@ -222,6 +199,10 @@ def get_main_keyboard():
         ],
         [
             {'type': 'callback', 'text': '✅ Завершить заявку', 'payload': 'complete_ticket'}
+        ],
+        [
+            {'type': 'callback', 'text': '📊 Анализ', 'payload': 'ai_analyze'},
+            {'type': 'callback', 'text': '💡 Совет', 'payload': 'ai_advice'}
         ]
     ]
 
@@ -231,7 +212,9 @@ def get_ai_keyboard():
     return [
         [{'type': 'callback', 'text': '🛗 Мои лифты', 'payload': 'my_elevators'},
          {'type': 'callback', 'text': '📋 Мои заявки', 'payload': 'my_tickets'}],
-        [{'type': 'callback', 'text': '✅ Завершить', 'payload': 'complete_ticket'}]
+        [{'type': 'callback', 'text': '✅ Завершить', 'payload': 'complete_ticket'}],
+        [{'type': 'callback', 'text': '📊 Анализ', 'payload': 'ai_analyze'},
+         {'type': 'callback', 'text': '💡 Совет', 'payload': 'ai_advice'}]
     ]
 
 
@@ -272,6 +255,12 @@ def process_callback(user_id, payload):
     elif payload == 'complete_ticket':
         logger.info(f"📋 Menu: complete_ticket from user {user_id}")
         process_message(user_id, '✅ Завершить заявку')
+    elif payload == 'ai_analyze':
+        logger.info(f"🤖 AI: analyze from user {user_id}")
+        handle_ai_analyze(user_id)
+    elif payload == 'ai_advice':
+        logger.info(f"🤖 AI: advice from user {user_id}")
+        handle_ai_advice(user_id)
     elif payload == 'back_to_menu':
         logger.info(f"📋 Menu: back_to_menu from user {user_id}")
         mechanic = get_mechanic_by_max(user_id)
@@ -285,9 +274,10 @@ def process_callback(user_id, payload):
             logger.info(f"✅ ACCEPT: ticket={ticket_id} from user={user_id}")
             message = handle_accept_ticket(user_id, ticket_id)
             logger.info(f"📤 accept response: {message[:80]}...")
-            send_message(user_id, message, get_ticket_keyboard(ticket_id, 'in_progress'))
+            send_result = send_message(user_id, message, get_ticket_keyboard(ticket_id, 'in_progress'))
+            logger.info(f"📤 send result: {send_result}")
         except Exception as e:
-            logger.error(f"❌ accept error: {e}")
+            logger.error(f"❌ accept error: {e}", exc_info=True)
             send_message(user_id, "❌ Ошибка")
     
     elif payload.startswith('complete_'):
@@ -381,6 +371,8 @@ def process_message(user_id, text):
     
     if text.lower() in ('/start', 'start', 'меню', 'главная'):
         show_main_menu(user_id, mechanic)
+    elif 'мои заявки' in text.lower() or 'принят' in text.lower():
+        show_tickets(user_id, mechanic)
     elif text == '🛗 Мои лифты' or text.lower() == 'мои лифты':
         show_elevators(user_id, mechanic)
     elif text == '📋 Мои заявки' or text.lower() == 'мои заявки':
@@ -499,20 +491,31 @@ def register_mechanic_max(user_id, phone):
 
 def handle_accept_ticket(user_id, ticket_id):
     """Принятие заявки в работу"""
+    logger.info(f"🔍 handle_accept_ticket: user_id={user_id}, ticket_id={ticket_id}")
+
     mechanic = get_mechanic_by_max(user_id)
+    logger.info(f"🔍 mechanic lookup: {mechanic}")
     if not mechanic:
         return "❌ Вы не зарегистрированы. Отправьте номер телефона."
-    
+
     ticket = db.get_ticket(ticket_id)
+    logger.info(f"🔍 ticket lookup: id={ticket_id}, found={ticket is not None}, assigned_to={ticket.get('assigned_to') if ticket else 'N/A'}")
     if not ticket:
         return "❌ Заявка не найдена"
-    
+
     if ticket.get('assigned_to') and ticket.get('assigned_to') != str(mechanic['id']):
+        logger.warning(f"⚠️ ticket already assigned to {ticket['assigned_to']}, mechanic is {mechanic['id']}")
         return "❌ Заявка уже назначена другому механику"
-    
-    db.update_ticket_status(ticket_id, 'в работе', f"max_bot (принял {mechanic['name']})")
-    db.update_ticket(ticket_id, {'assigned_to': str(mechanic['id'])})
-    
+
+    try:
+        db.update_ticket_status(ticket_id, 'в работе', f"max_bot (принял {mechanic['name']})")
+        logger.info(f"✅ status updated to 'в работе'")
+        db.update_ticket(ticket_id, {'assigned_to': str(mechanic['id'])})
+        logger.info(f"✅ assigned_to set to {mechanic['id']}")
+    except Exception as e:
+        logger.error(f"❌ DB error in handle_accept_ticket: {e}", exc_info=True)
+        return f"❌ Ошибка базы данных: {e}"
+
     return f"✅ Заявка #{ticket.get('ticket_number', ticket_id)} принята в работу!\n\n📍 {ticket.get('address')}\n📝 {ticket.get('problem_description', '')[:200]}"
 
 
@@ -674,6 +677,58 @@ def show_complete_ticket(user_id, mechanic):
         msg += f"#{t.get('ticket_number', t['id'])} - {t.get('address', 'Адрес не указан')}\n"
     
     send_message(user_id, msg, get_main_keyboard())
+
+
+def handle_ai_analyze(user_id):
+    """AI анализ заявок механика"""
+    mechanic = get_mechanic_by_max(user_id)
+    if not mechanic:
+        send_message(user_id, "❌ Вы не зарегистрированы", get_main_keyboard())
+        return
+    
+    tickets = db.get_all_mechanic_tickets(mechanic['id'])
+    in_work = [t for t in tickets if t.get('status') == 'в работе']
+    new_tickets = [t for t in tickets if t.get('status') == 'новая']
+    
+    prompt = f"""Проанализируй заявки механика {mechanic['name']}:
+- В работе: {len(in_work)} заявок
+- Новых: {len(new_tickets)} заявок
+
+Текущие заявки в работе:
+{chr(10).join([f"- {t.get('address', 'N/A')}: {t.get('problem_description', 'N/A')[:50]}" for t in in_work[:3]])}
+
+Дай краткий анализ и рекомендации (2-3 предложения)."""
+    
+    context = get_ai_context(user_id)
+    response = ask_ai(prompt, context)
+    send_message(user_id, f"📊 Анализ заявок:\n\n{response}", get_main_keyboard())
+
+
+def handle_ai_advice(user_id):
+    """AI совет по текущей работе"""
+    mechanic = get_mechanic_by_max(user_id)
+    if not mechanic:
+        send_message(user_id, "❌ Вы не зарегистрированы", get_main_keyboard())
+        return
+    
+    tickets = db.get_all_mechanic_tickets(mechanic['id'])
+    in_work = [t for t in tickets if t.get('status') == 'в работе']
+    
+    if not in_work:
+        send_message(user_id, "ℹ️ У вас нет заявок в работе. Начните работу с новой заявки!", get_main_keyboard())
+        return
+    
+    current_ticket = in_work[0]
+    prompt = f"""Механик работает над заявкой:
+- Адрес: {current_ticket.get('address', 'N/A')}
+- Проблема: {current_ticket.get('problem_description', 'N/A')}
+- Лифт: {current_ticket.get('elevator_id', 'N/A')}
+
+Дай краткий совет по выполнению этой работы (1-2 предложения)."""
+    
+    context = get_ai_context(user_id)
+    response = ask_ai(prompt, context)
+    send_message(user_id, f"💡 Совет по заявке #{current_ticket.get('ticket_number', current_ticket.get('id'))}:\n\n{response}", get_main_keyboard())
 
 
 if __name__ == '__main__':

@@ -50,8 +50,7 @@ COPY tickets_api.py /app/
 EXPOSE 8081 8082 8084
 
 # Environment variables
-ENV FLASK_ENV=production
-ENV MAX_BOT_TOKEN=f9LHodD0cOJr6-3caEEtEU-KqU42RaPXLpz3wkHbJMQc0vANY8fVYJfXn0bsZh7IdSq0sNqBkyGwfySDPS8l
+ENV FLASK_ENV=development
 ENV LM_STUDIO_URL=http://host.docker.internal:1234
 
 # Health check
