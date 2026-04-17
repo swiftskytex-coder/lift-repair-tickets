@@ -173,8 +173,15 @@
                             <td style="min-width: 130px;"><code>{{ elevator.serial_number or '-' }}</code></td>
                             <td>
                                 <div class="action-buttons">
-                                    <button class="btn btn-sm btn-outline-primary action-btn" 
-                                            onclick="openEditModal('{{ elevator.elevator_id }}', '{{ elevator.address }}', '{{ elevator.entrance or '' }}', '{{ elevator.elevator_type }}', '{{ elevator.status }}', '{{ elevator.serial_number or '' }}', '{{ elevator.key_photo or '' }}')">
+                                    <button class="btn btn-sm btn-outline-primary action-btn"
+                                            data-id="{{ elevator.elevator_id }}"
+                                            data-address="{{ elevator.address }}"
+                                            data-entrance="{{ elevator.entrance or '' }}"
+                                            data-type="{{ elevator.elevator_type }}"
+                                            data-status="{{ elevator.status }}"
+                                            data-serial="{{ elevator.serial_number or '' }}"
+                                            data-photo="{{ elevator.key_photo or '' }}"
+                                            onclick="openEditModalFromBtn(this)">
                                         <i class="bi bi-pencil"></i>
                                     </button>
                                     <button class="btn btn-sm btn-outline-danger action-btn" 
@@ -448,6 +455,19 @@
             }
         }
 
+        // Открыть модальное окно для редактирования через data-атрибуты
+        function openEditModalFromBtn(btn) {
+            openEditModal(
+                btn.dataset.id,
+                btn.dataset.address,
+                btn.dataset.entrance,
+                btn.dataset.type,
+                btn.dataset.status,
+                btn.dataset.serial,
+                btn.dataset.photo
+            );
+        }
+
         // Открыть модальное окно для редактирования
         async function openEditModal(id, address, entrance, type, status, serialNumber = '', entrancePhoto = '') {
             isEditMode = true;
@@ -522,7 +542,7 @@
             
             const data = {
                 elevator_id: formData.get('elevator_id'),
-                serial_number: formData.get('serial_number'),
+                serial_number: document.getElementById('serialNumber').value.trim(),
                 address: formData.get('address'),
                 entrance: formData.get('entrance'),
                 elevator_type: formData.get('elevator_type'),
@@ -530,25 +550,12 @@
                 key_photo: entrancePhotoPath
             };
 
+            console.log('saveElevator data:', JSON.stringify(data));
+
             // Валидация
             if (!data.elevator_id || !data.address) {
                 showError('Заполните обязательные поля');
                 return;
-            }
-
-            // Проверка на дублирование серийного номера
-            if (data.serial_number) {
-                const existingResponse = await fetch('/api/elevators');
-                const existingData = await existingResponse.json();
-                const originalId = document.getElementById('originalId').value;
-                const duplicate = existingData.elevators.find(e => 
-                    e.serial_number === data.serial_number && 
-                    e.elevator_id !== originalId
-                );
-                if (duplicate) {
-                    showError('Серийный номер уже используется для лифта: ' + duplicate.elevator_id);
-                    return;
-                }
             }
 
             try {

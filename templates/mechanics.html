@@ -94,7 +94,7 @@
                             <th>ID</th>
                             <th>ФИО</th>
                             <th>Телефон</th>
-                            <th>Telegram</th>
+                            <th>Max</th>
                             <th>Подключён</th>
                             <th></th>
                         </tr>
@@ -110,16 +110,16 @@
                                 </a>
                             </td>
                             <td>
-                                {% if mechanic.telegram_username %}
-                                    <a href="https://t.me/{{ mechanic.telegram_username.replace('@', '') }}" target="_blank" class="text-decoration-none">
-                                        <i class="bi bi-telegram"></i> {{ mechanic.telegram_username }}
+                                {% if mechanic.max_username %}
+                                    <a href="https://max.ru/id{{ mechanic.max_username.replace('@', '') }}" target="_blank" class="text-decoration-none">
+                                        <i class="bi bi-chat-left-text"></i> {{ mechanic.max_username }}
                                     </a>
                                 {% else %}
                                     <span class="text-muted">-</span>
                                 {% endif %}
                             </td>
                             <td>
-                                {% if mechanic.telegram_chat_id %}
+                                {% if mechanic.max_chat_id %}
                                     <span class="badge bg-success"><i class="bi bi-check-circle"></i> Подключён</span>
                                 {% else %}
                                     <span class="badge bg-secondary">Не подключён</span>
@@ -127,7 +127,7 @@
                             </td>
                             <td>
                                 <button class="btn btn-sm btn-outline-primary" 
-                                        onclick="openEditModal({{ mechanic.id }}, '{{ mechanic.name }}', '{{ mechanic.phone }}', '{{ mechanic.telegram_username or '' }}', '{{ mechanic.telegram_chat_id or '' }}', '{{ mechanic.status }}')">
+                                        onclick="openEditModal({{ mechanic.id }}, '{{ mechanic.name }}', '{{ mechanic.phone }}', '{{ mechanic.max_username or '' }}', '{{ mechanic.max_chat_id or '' }}', '{{ mechanic.status }}')">
                                     <i class="bi bi-pencil"></i>
                                 </button>
                             </td>
@@ -171,13 +171,13 @@
                                    placeholder="+79991234567">
                         </div>
                         <div class="mb-3">
-                            <label class="form-label">Telegram Username</label>
-                            <input type="text" class="form-control" id="mechanicTelegram" name="telegram_username" 
+                            <label class="form-label">Max Username</label>
+                            <input type="text" class="form-control" id="mechanicMax" name="max_username" 
                                    placeholder="@username">
                         </div>
                         <div class="mb-3">
-                            <label class="form-label">Telegram Chat ID</label>
-                            <input type="text" class="form-control" id="mechanicChatId" name="telegram_chat_id" 
+                            <label class="form-label">Max Chat ID</label>
+                            <input type="text" class="form-control" id="mechanicChatId" name="max_chat_id" 
                                    placeholder="123456789 (заполняется автоматически)">
                             <div class="form-text">Заполняется автоматически при регистрации в боте</div>
                         </div>
@@ -255,7 +255,7 @@
             document.getElementById('mechanicId').value = id;
             document.getElementById('mechanicName').value = name;
             document.getElementById('mechanicPhone').value = phone;
-            document.getElementById('mechanicTelegram').value = telegram;
+            document.getElementById('mechanicMax').value = telegram;
             document.getElementById('mechanicChatId').value = chatId;
             document.getElementById('mechanicStatus').value = status;
             modal.show();
@@ -268,8 +268,8 @@
             const data = {
                 name: formData.get('name'),
                 phone: formData.get('phone'),
-                telegram_username: formData.get('telegram_username'),
-                telegram_chat_id: formData.get('telegram_chat_id'),
+                max_username: formData.get('max_username'),
+                max_chat_id: formData.get('max_chat_id'),
                 status: formData.get('status')
             };
 

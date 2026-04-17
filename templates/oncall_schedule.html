@@ -51,8 +51,8 @@
                     <div class="card-body">
                         <p class="oncall-date">{{ today }}</p>
                         <p class="oncall-mechanic">{{ oncall_today.name }} ({{ oncall_today.phone }})</p>
-                        {% if oncall_today.telegram_username %}
-                        <small class="text-muted">@{{ oncall_today.telegram_username }}</small>
+                        {% if oncall_today.max_username %}
+                        <small class="text-muted">@{{ oncall_today.max_username }}</small>
                         {% endif %}
                         <div class="mt-3">
                             <label class="form-label">Изменить механика</label>
@@ -74,8 +74,8 @@
                     <div class="card-body">
                         <p class="oncall-date">{{ tomorrow }}</p>
                         <p class="oncall-mechanic">{{ oncall_tomorrow.name }} ({{ oncall_tomorrow.phone }})</p>
-                        {% if oncall_tomorrow.telegram_username %}
-                        <small class="text-muted">@{{ oncall_tomorrow.telegram_username }}</small>
+                        {% if oncall_tomorrow.max_username %}
+                        <small class="text-muted">@{{ oncall_tomorrow.max_username }}</small>
                         {% endif %}
                     </div>
                 </div>

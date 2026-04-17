@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: lift_repair
+      POSTGRES_USER: liftuser
+      POSTGRES_PASSWORD: liftpass123
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U liftuser -d lift_repair"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    ports:
+      - "8081:8081"
+      - "8082:8082"
+      - "8084:8084"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://liftuser:liftpass123@postgres:5432/lift_repair
+      - MAX_BOT_TOKEN=${MAX_BOT_TOKEN}
+      - LM_STUDIO_URL=http://192.168.0.38:1234/v1/chat/completions
+      - FLASK_ENV=development
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./uploads:/app/uploads
+      - ./instance:/app/instance
+      - ./ticket_system.py:/app/ticket_system.py
+      - ./ticket_db.py:/app/ticket_db.py
+      - ./max_bot.py:/app/max_bot.py
+      - ./notification_service.py:/app/notification_service.py
+      - ./templates:/app/templates
+
+volumes:
+  postgres_data:

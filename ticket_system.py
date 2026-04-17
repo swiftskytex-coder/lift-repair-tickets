@@ -8,6 +8,9 @@ import asyncio
 import zipfile
 import io
 import sqlite3
+import os
+import logging
+import logging.handlers
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from flask import Flask, request, jsonify, render_template, send_from_directory, send_file
@@ -30,10 +33,33 @@ def format_samara(dt):
         return dt.astimezone(SAMARA_TZ).strftime('%d.%m %H:%M')
     return ''
 
-app = Flask(__name__, template_folder='templates', static_folder='static', static_url_path='/static')
+app = Flask(__name__, template_folder='templates', static_folder='uploads', static_url_path='/uploads')
 app.config['JSON_AS_cii'] = False
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 app.jinja_env.auto_reload = True
+
+# Configure logging
+LOG_FILE = os.environ.get('LOG_FILE', 'ticket_system.log')
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s | %(levelname)-8s | %(message)s',
+    handlers=[
+        logging.handlers.RotatingFileHandler(LOG_FILE, maxBytes=5*1024*1024, backupCount=3),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger('ticket_system')
+
+# Create uploads directories at startup
+import os
+uploads_dir = os.path.join(app.root_path, 'uploads')
+os.makedirs(os.path.join(uploads_dir, 'entrances'), exist_ok=True)
+os.makedirs(os.path.join(uploads_dir, 'reports'), exist_ok=True)
+
+@app.route('/uploads/<path:filename>')
+def serve_uploaded_file(filename):
+    """Serve uploaded files"""
+    return send_from_directory(uploads_dir, filename)
 
 @app.template_filter('samara_time')
 def samara_time_filter(dt):
@@ -144,7 +170,7 @@ def index():
                 conn = db.get_connection()
                 cursor = conn.cursor()
                 cursor.execute(
-                    "SELECT text FROM comments WHERE ticket_id = ? AND text LIKE '[ФОТО]%' LIMIT 4",
+                    "SELECT text FROM comments WHERE ticket_id = %s AND text LIKE '[ФОТО]%%' LIMIT 4",
                     (ticket_id,)
                 )
                 photos = [row[0].replace('[ФОТО] ', '') for row in cursor.fetchall()]
@@ -157,7 +183,7 @@ def index():
                     conn = db.get_connection()
                     cursor = conn.cursor()
                     cursor.execute(
-                        "SELECT text FROM comments WHERE ticket_id = ? AND author = 'mechanic' AND text LIKE '📝%' ORDER BY created_at DESC LIMIT 1",
+                        "SELECT text FROM comments WHERE ticket_id = %s AND author = 'mechanic' AND text LIKE '📝%%' ORDER BY created_at DESC LIMIT 1",
                         (ticket_id,)
                     )
                     work_row = cursor.fetchone()
@@ -266,7 +292,7 @@ def index():
             mech_info = {
                 'name': mech['name'],
                 'id': mech.get('id'),
-                'has_telegram': bool(mech.get('telegram_chat_id')),
+                'has_telegram': bool(mech.get('max_chat_id')),
                 'is_oncall': bool(oncall_today_id and mech['id'] == oncall_today_id),
                 'status': None  # Принял, Линейный, Аварийный
             }
@@ -298,7 +324,7 @@ def index():
             mechanics_list.append({
                 'name': oncall_to_add['name'],
                 'id': oncall_to_add.get('id'),
-                'has_telegram': bool(oncall_to_add.get('telegram_chat_id')),
+                'has_telegram': bool(oncall_to_add.get('max_chat_id')),
                 'is_oncall': True,
                 'status': 'Аварийный'
             })
@@ -347,7 +373,7 @@ def index():
                         mechanics_list.append({
                             'name': mech['name'],
                             'id': mech['id'],
-                            'has_telegram': bool(mech.get('telegram_chat_id')),
+                            'has_telegram': bool(mech.get('max_chat_id')),
                             'is_oncall': False,
                             'status': 'Принял',
                             'tg_status': tg_status
@@ -421,7 +447,7 @@ def index():
             try:
                 mechanic = db.get_mechanic(int(ticket['assigned_to']))
                 ticket['mechanic_name'] = mechanic['name'] if mechanic else 'Неизвестный'
-                ticket['mechanic_has_telegram'] = bool(mechanic and mechanic.get('telegram_chat_id'))
+                ticket['mechanic_has_telegram'] = bool(mechanic and mechanic.get('max_chat_id'))
                 if oncall_today_id and mechanic and mechanic['id'] == oncall_today_id:
                     ticket['is_oncall_today'] = True
             except:
@@ -465,7 +491,7 @@ def tickets_list():
     tickets = db.search_tickets(filters=filters if filters else None)
     
     # Добавляем дату (день) для группировки
-    for ticket in recent_tickets:
+    for ticket in tickets:
         if ticket.get('created_at'):
             try:
                 created = datetime.fromisoformat(ticket['created_at'].replace('Z', '+00:00'))
@@ -498,16 +524,15 @@ def tickets_list():
                 cursor = conn.cursor()
                 # Фото
                 cursor.execute(
-                    "SELECT text FROM comments WHERE ticket_id = ? AND text LIKE '[ФОТО]%' LIMIT 4",
+                    "SELECT text FROM comments WHERE ticket_id = %s AND text LIKE '[ФОТО]%%' LIMIT 4",
                     (ticket_id,)
                 )
                 photos = [row[0].replace('[ФОТО] ', '') for row in cursor.fetchall()]
-                # Путь уже содержит uploads/
                 if photos:
                     ticket['photos'] = photos
                 # Работы
                 cursor.execute(
-                    "SELECT text FROM comments WHERE ticket_id = ? AND author = 'mechanic' AND text LIKE '📝%' ORDER BY created_at DESC LIMIT 1",
+                    "SELECT text FROM comments WHERE ticket_id = %s AND author = 'mechanic' AND text LIKE '📝%%' ORDER BY created_at DESC LIMIT 1",
                     (ticket_id,)
                 )
                 work_row = cursor.fetchone()
@@ -540,7 +565,7 @@ def ticket_detail(ticket_id):
             SELECT m.name, m.phone, tm.status, tm.sent_at, tm.responded_at
             FROM ticket_mechanics tm
             JOIN mechanics m ON tm.mechanic_id = m.id
-            WHERE tm.ticket_id = ?
+            WHERE tm.ticket_id = %s
             ORDER BY tm.sent_at DESC
         ''', (ticket_id,))
         for row in cursor.fetchall():
@@ -845,6 +870,12 @@ def about_page():
     '''
 
 
+@app.route('/settings')
+def settings_page():
+    """Страница настроек"""
+    return render_template('settings.html')
+
+
 @app.route('/mechanics')
 def mechanics_list():
     """Справочник механиков"""
@@ -872,7 +903,7 @@ def oncall_schedule():
     with db.get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT o.date, m.name, m.phone, m.telegram_username 
+            SELECT o.date, m.name, m.phone, m.max_username 
             FROM oncall_mechanics o
             JOIN mechanics m ON o.mechanic_id = m.id
             ORDER BY o.date DESC LIMIT 10
@@ -883,7 +914,7 @@ def oncall_schedule():
                 'date': row[0],
                 'name': row[1],
                 'phone': row[2],
-                'telegram_username': row[3]
+                'max_username': row[3]
             })
     
     return render_template('oncall_schedule.html', 
@@ -1080,7 +1111,7 @@ def api_tickets_html():
                 conn = db.get_connection()
                 cursor = conn.cursor()
                 cursor.execute(
-                    "SELECT text FROM comments WHERE ticket_id = ? AND text LIKE '[ФОТО]%' LIMIT 4",
+                    "SELECT text FROM comments WHERE ticket_id = %s AND text LIKE '[ФОТО]%%' LIMIT 4",
                     (ticket_id,)
                 )
                 photos = [row[0].replace('[ФОТО] ', '') for row in cursor.fetchall()]
@@ -1093,7 +1124,7 @@ def api_tickets_html():
                     conn = db.get_connection()
                     cursor = conn.cursor()
                     cursor.execute(
-                        "SELECT text FROM comments WHERE ticket_id = ? AND text LIKE '[ВИДЕО]%' LIMIT 2",
+                        "SELECT text FROM comments WHERE ticket_id = %s AND text LIKE '[ВИДЕО]%%' LIMIT 2",
                         (ticket_id,)
                     )
                     videos = [row[0].replace('[ВИДЕО] ', '') for row in cursor.fetchall()]
@@ -1108,7 +1139,7 @@ def api_tickets_html():
                     conn = db.get_connection()
                     cursor = conn.cursor()
                     cursor.execute(
-                        "SELECT text FROM comments WHERE ticket_id = ? AND author = 'mechanic' AND text LIKE '📝%' ORDER BY created_at DESC LIMIT 1",
+                        "SELECT text FROM comments WHERE ticket_id = %s AND author = 'mechanic' AND text LIKE '📝%%' ORDER BY created_at DESC LIMIT 1",
                         (ticket_id,)
                     )
                     work_row = cursor.fetchone()
@@ -1149,7 +1180,7 @@ def api_tickets_html():
                     mech_info = {
                         'name': mech['name'],
                         'id': mech.get('id'),
-                        'has_telegram': bool(mech.get('telegram_chat_id')),
+                        'has_telegram': bool(mech.get('max_chat_id')),
                         'is_oncall': is_oncall,
                         'status': 'Принял' if assigned_id and str(assigned_id) == str(mech['id']) else ('Аварийный' if is_oncall else 'Линейный'),
                         'tg_status': 'accepted' if assigned_id and str(assigned_id) == str(mech['id']) else None
@@ -1163,7 +1194,7 @@ def api_tickets_html():
                         mechanics_list.append({
                             'name': oncall_today['name'],
                             'id': oncall_today.get('id'),
-                            'has_telegram': bool(oncall_today.get('telegram_chat_id')),
+                            'has_telegram': bool(oncall_today.get('max_chat_id')),
                             'is_oncall': True,
                             'status': 'Аварийный',
                             'tg_status': None
@@ -1184,7 +1215,7 @@ def api_tickets_html():
                                 mechanics_list.append({
                                     'name': assigned_mechanic['name'],
                                     'id': assigned_mechanic.get('id'),
-                                    'has_telegram': bool(assigned_mechanic.get('telegram_chat_id')),
+                                    'has_telegram': bool(assigned_mechanic.get('max_chat_id')),
                                     'is_oncall': False,
                                     'status': 'Принял',
                                     'tg_status': 'accepted'
@@ -1250,24 +1281,28 @@ def api_create_ticket():
         return jsonify({'success': False, 'error': 'Ошибка создания заявки в БД'}), 500
     
     # Отправка уведомления механикам через Telegram
-    if TELEGRAM_NOTIFICATIONS_ENABLED and ticket.get('elevator_id'):
+    if ticket.get('elevator_id'):
         try:
-            # Запускаем в отдельном потоке, чтобы не блокировать ответ
+            import asyncio
             import threading
+            import sys
             def send_notification():
                 try:
-                    print(f"🔔 Запуск отправки уведомления для заявки #{ticket['ticket_number']}")
-                    asyncio.run(notify_mechanics_about_ticket(ticket['id']))
+                    print(f"🔔 START: Заявка #{ticket['ticket_number']}", flush=True)
+                    sys.stdout.flush()
+                    result = asyncio.run(notify_mechanics_about_ticket(ticket['id']))
+                    print(f"🔔 DONE: {result}", flush=True)
+                    sys.stdout.flush()
                 except Exception as e:
-                    print(f"❌ Ошибка отправки уведомления: {e}")
-                    import traceback
-                    traceback.print_exc()
+                    print(f"❌ ERROR: {e}", flush=True)
+                    sys.stdout.flush()
             
-            notification_thread = threading.Thread(target=send_notification)
-            notification_thread.daemon = True
-            notification_thread.start()
-            
-            print(f"✅ Уведомление отправлено механикам для заявки #{ticket['ticket_number']}")
+            t = threading.Thread(target=send_notification)
+            t.daemon = True
+            t.start()
+            print(f"✅ Thread started for #{ticket['ticket_number']}", flush=True)
+        except Exception as e:
+            print(f"❌ FAIL: {e}", flush=True)
         except Exception as e:
             print(f"❌ Ошибка запуска отправки уведомления: {e}")
     
@@ -1543,7 +1578,7 @@ def api_get_elevators():
     query = request.args.get('q', '')
     limit = request.args.get('limit', 200, type=int)
     
-    elevators = db.search_elevators(query=query if query else None, limit=limit)
+    elevators = db.search_elevators(query_text=query if query else None, limit=limit)
     
     return jsonify({
         'success': True,
@@ -1598,7 +1633,11 @@ def api_get_elevator(elevator_id):
 def api_update_elevator(elevator_id):
     """Обновление данных лифта"""
     data = request.get_json()
-    
+    logger.info(f"PUT /api/elevators/{elevator_id} data={data}")
+
+    # elevator_id не обновляем через PUT
+    data.pop('elevator_id', None)
+
     elevator = db.update_elevator(elevator_id, data)
     
     if not elevator:
@@ -1692,90 +1731,23 @@ def api_upload_elevator_photo():
     if photo.filename == '':
         return jsonify({'success': False, 'error': 'No photo selected'}), 400
     
+    # Создаем директорию для фото подъездов
     import os
-    from PIL import Image
-    import uuid
-    
-    upload_dir = 'static/uploads/entrances'
+    upload_dir = os.path.join(app.root_path, 'uploads', 'entrances')
     os.makedirs(upload_dir, exist_ok=True)
     
-    ext = os.path.splitext(photo.filename)[1].lower() if photo.filename else '.jpg'
-    if ext not in ['.jpg', '.jpeg', '.png']:
-        ext = '.jpg'
-    
+    # Сохраняем файл
+    import uuid
+    ext = os.path.splitext(photo.filename)[1] if photo.filename else '.jpg'
     filename = f"{uuid.uuid4()}{ext}"
     filepath = os.path.join(upload_dir, filename)
+    photo.save(filepath)
     
-    try:
-        img = Image.open(photo)
-        
-        # Учитываем ориентацию из EXIF
-        try:
-            exif = img.getexif()
-            orientation = exif.get(0x0112)  # Orientation tag
-            if orientation == 2:
-                img = img.transpose(Image.FLIP_LEFT_RIGHT)
-            elif orientation == 3:
-                img = img.rotate(180, expand=True)
-            elif orientation == 4:
-                img = img.transpose(Image.FLIP_TOP_BOTTOM)
-            elif orientation == 5:
-                img = img.transpose(Image.FLIP_LEFT_RIGHT).rotate(90, expand=True)
-            elif orientation == 6:
-                img = img.rotate(270, expand=True)
-            elif orientation == 7:
-                img = img.transpose(Image.FLIP_LEFT_RIGHT).rotate(270, expand=True)
-            elif orientation == 8:
-                img = img.rotate(90, expand=True)
-        except Exception:
-            pass
-        
-        max_size = 1200
-        if img.width > max_size or img.height > max_size:
-            ratio = min(max_size / img.width, max_size / img.height)
-            new_width = int(img.width * ratio)
-            new_height = int(img.height * ratio)
-            img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-        
-        if img.mode in ('RGBA', 'P'):
-            img = img.convert('RGB')
-        
-        img.save(filepath, 'JPEG', quality=85, optimize=True)
-    except Exception as e:
-        print(f"Error compressing image: {e}")
-        photo.save(filepath)
-    
+    # Возвращаем путь для Flask static (uploads folder -> /uploads prefix)
     return jsonify({
         'success': True,
-        'path': f'/static/uploads/entrances/{filename}'
+        'path': f'/uploads/entrances/{filename}'
     })
-
-
-@app.route('/api/elevators/apply-photo-to-address', methods=['POST'])
-def api_apply_photo_to_address():
-    """Применить фото ко всем лифтам с одинаковым адресом"""
-    data = request.get_json()
-    
-    if not data or not data.get('address') or not data.get('photoPath'):
-        return jsonify({'success': False, 'error': 'Не указан адрес или фото'}), 400
-    
-    address = data['address']
-    photo_path = data['photoPath']
-    
-    try:
-        conn = db.get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE elevators SET key_photo = ? WHERE address = ?",
-            (photo_path, address)
-        )
-        count = cursor.rowcount
-        conn.commit()
-        conn.close()
-        
-        return jsonify({'success': True, 'count': count})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -2093,10 +2065,80 @@ def api_restore_backup():
 # Запуск сервера
 # ═══════════════════════════════════════════════════════════════
 
+# API для настроек
+@app.route('/api/settings', methods=['GET'])
+def api_get_settings():
+    """Получение всех настроек"""
+    settings = db.get_all_settings()
+    return jsonify(settings)
+
+
+@app.route('/api/settings', methods=['POST'])
+def api_save_settings():
+    """Сохранение настроек"""
+    data = request.get_json()
+    for key, value in data.items():
+        db.set_setting(key, str(value))
+    return jsonify({'success': True})
+
+
+# Webhook для Max бота
+@app.route('/max/webhook', methods=['GET', 'POST'])
+def max_webhook():
+    """Webhook для Max бота"""
+    data = request.get_json(force=True, silent=True)
+    print(f"🌐 WEBHOOK received: {data}", flush=True)
+
+    if not data:
+        return os.getenv('MAX_CONFIRMATION_CODE', '')
+
+    event_type = data.get('update_type')
+    print(f"🌐 Event type: {event_type}", flush=True)
+
+    # Confirmation
+    if event_type == 'confirmation':
+        return os.getenv('MAX_CONFIRMATION_CODE', ''), 200, {'Content-Type': 'text/plain'}
+
+    # Message
+    if event_type == 'message_created':
+        msg = data.get('message', {})
+        user_id = msg.get('sender', {}).get('user_id')
+        text = msg.get('body', {}).get('text', '')
+        print(f"📩 WEBHOOK message: user={user_id}, text={text[:50]}", flush=True)
+        try:
+            from max_bot import process_message
+            process_message(user_id, text)
+        except Exception as e:
+            print(f"❌ Webhook error: {e}")
+            import traceback
+            traceback.print_exc()
+
+    # Bot started
+    elif event_type == 'bot_started':
+        from max_bot import send_message, get_main_keyboard
+        send_message(data.get('user', {}).get('user_id'), "👋 Привет! Отправьте номер телефона:", get_main_keyboard())
+
+    # Callback (Max использует message_callback)
+    elif event_type in ('callback_query', 'message_callback'):
+        callback = data.get('callback', {})
+        user_id = callback.get('user', {}).get('user_id') or callback.get('user_id')
+        payload = callback.get('payload', '')
+        print(f"🔘 WEBHOOK callback: user={user_id}, payload={payload}", flush=True)
+        try:
+            from max_bot import process_callback
+            process_callback(user_id, payload)
+        except Exception as e:
+            import traceback
+            print(f"❌ Callback error: {e}", flush=True)
+            traceback.print_exc()
+
+    return jsonify({'ok': True})
+
+
 if __name__ == '__main__':
     from notification_service import start_scheduler
     start_scheduler()
-    
+
     print("=" * 60)
     print("🛠️  Система заявок на ремонт лифтов")
     print("=" * 60)
@@ -2105,10 +2147,11 @@ if __name__ == '__main__':
     print("🏥 Health check: http://localhost:8081/api/health")
     print("⏰ Утренняя рассылка: 8:00 (пн-пт)")
     print("=" * 60)
-    
+
     app.run(
         host='0.0.0.0',
         port=8081,
         debug=False,
-        use_reloader=False
+        use_reloader=True,
+        reloader_type='stat'
     )

@@ -1,20 +1,72 @@
 """
-Интеграция заявок с Telegram
+Интеграция заявок с Max Bot
 Автоматическая отправка уведомлений механикам
 """
 
-import sys
-sys.path.insert(0, '/Users/swiftpanaev/KIRO/test4')
-
+import os
 import asyncio
 import threading
 import time
 from datetime import datetime, timedelta
 from ticket_db import db
-from telegram_bot import send_ticket_to_mechanic, BOT_TOKEN
-from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
+from max_bot import send_message, get_main_keyboard, send_message_with_photo
+
 from PIL import Image
 import io
+
+
+def format_ticket_message(ticket, include_photo=True):
+    """Форматирование текста заявки для отправки"""
+    if not ticket:
+        return "Заявка не найдена"
+    
+    from ticket_db import db
+    
+    ticket_number = ticket.get('ticket_number', ticket.get('id'))
+    address = ticket.get('address', 'Адрес не указан')
+    problem = ticket.get('problem_description', 'Описание не указано')
+    priority = ticket.get('priority', 'обычный')
+    
+    priority_emoji = {
+        'низкий': '🟢',
+        'обычный': '🔵',
+        'высокий': '🟠',
+        'срочный': '🔴'
+    }.get(priority, '🔵')
+    
+    msg = f"🔔 *Новая заявка #{ticket_number}*\n\n"
+    msg += f"📍 *{address}*\n"
+    msg += f"📝 {problem[:200]}\n"
+    msg += f"⚡ Приоритет: {priority_emoji} {priority}\n"
+    
+    # Добавляем фото подъезда
+    if include_photo:
+        elevator_id = ticket.get('elevator_id')
+        if elevator_id:
+            elevator = db.get_elevator(elevator_id)
+            if elevator and elevator.get('key_photo'):
+                msg += f"\n📷 Фото подъезда: {elevator['key_photo']}\n"
+    
+    return msg
+
+
+def get_ticket_keyboard(ticket_id, status='new'):
+    """Клавиатура для работы с заявкой"""
+    if status == 'new':
+        return [
+            [{'type': 'callback', 'text': '✅ Принять', 'payload': f'accept_{ticket_id}'},
+             {'type': 'callback', 'text': '📞 Позвонить', 'payload': f'call_{ticket_id}'}],
+            [{'type': 'callback', 'text': '📋 Детали', 'payload': f'details_{ticket_id}'},
+             {'type': 'callback', 'text': '❌ Отклонить', 'payload': f'reject_{ticket_id}'}]
+        ]
+    elif status == 'in_progress':
+        return [
+            [{'type': 'callback', 'text': '✅ Завершить', 'payload': f'complete_{ticket_id}'},
+             {'type': 'callback', 'text': '⚠️ Проблема', 'payload': f'issue_{ticket_id}'}],
+            [{'type': 'callback', 'text': '📸 Фото', 'payload': f'photo_{ticket_id}'},
+             {'type': 'callback', 'text': '📝 Комментарий', 'payload': f'comment_{ticket_id}'}]
+        ]
+    return None
 
 
 def create_thumbnail(image_path, size=(240, 180)):
@@ -101,145 +153,94 @@ def send_morning_summary_to_linear_mechanics():
 
 
 async def _send_summaries_async(tickets_by_mechanic):
-    """Асинхронная отправка сводок"""
-    bot = Bot(token=BOT_TOKEN)
-    
+    """Асинхронная отправка сводок через Max Bot"""
     for mech_id, data in tickets_by_mechanic.items():
         mechanic = data['mechanic']
         tickets = data['tickets']
-        telegram_chat_id = mechanic.get('telegram_chat_id')
-        
-        if not telegram_chat_id:
+        max_chat_id = mechanic.get('max_chat_id')
+
+        if not max_chat_id:
             continue
-        
+
         today = datetime.now().strftime('%d.%m.%Y')
-        
         new_tickets = [t for t in tickets if t.get('status') == 'новая']
         in_progress_tickets = [t for t in tickets if t.get('status') == 'в работе']
         completed_tickets = [t for t in tickets if t.get('status') == 'выполнена']
-        
+
         message = f"📋 *Утренняя сводка заявок на {today}*\n\n"
         message += f"📊 Всего: {len(tickets)} | 🆕 Новых: {len(new_tickets)} | 🔧 В работе: {len(in_progress_tickets)} | ✅ Выполнено: {len(completed_tickets)}\n\n"
-        
-        if new_tickets:
-            message += "━━━━━━━━━━━━━━━━━━━━━━\n"
-            message += "🆕 *НОВЫЕ ЗАЯВКИ*\n"
-            message += "━━━━━━━━━━━━━━━━━━━━━━\n"
-            for i, ticket in enumerate(new_tickets, 1):
-                address = ticket.get('address', 'Адрес не указан')
-                problem = ticket.get('problem_description', '')
-                problem_short = problem[:50] + '...' if len(problem) > 50 else problem
-                created_at = ticket.get('created_at', '')
-                if created_at:
-                    try:
-                        created_at = created_at[11:16]
-                    except:
-                        created_at = ''
-                
-                message += f"{i}. *{address}*"
-                if created_at:
-                    message += f" 🕐 {created_at}"
-                message += f"\n   📝 {problem_short}\n\n"
-        
-        if in_progress_tickets:
-            message += "━━━━━━━━━━━━━━━━━━━━━━\n"
-            message += "🔧 *В РАБОТЕ*\n"
-            message += "━━━━━━━━━━━━━━━━━━━━━━\n"
-            for i, ticket in enumerate(in_progress_tickets, 1):
-                address = ticket.get('address', 'Адрес не указан')
-                problem = ticket.get('problem_description', '')
-                problem_short = problem[:50] + '...' if len(problem) > 50 else problem
-                created_at = ticket.get('created_at', '')
-                if created_at:
-                    try:
-                        created_at = created_at[11:16]
-                    except:
-                        created_at = ''
-                
-                message += f"{i}. *{address}*"
-                if created_at:
-                    message += f" 🕐 {created_at}"
-                message += f"\n   📝 {problem_short}\n\n"
-        
-        keyboard = [[InlineKeyboardButton("📋 Полный отчёт", url="http://tickets.lift-system.crazedns.ru/")]]
-        
+
+        for label, group in [("🆕 *НОВЫЕ ЗАЯВКИ*", new_tickets), ("🔧 *В РАБОТЕ*", in_progress_tickets)]:
+            if group:
+                message += f"━━━━━━━━━━━━━━━━━━━━━━\n{label}\n━━━━━━━━━━━━━━━━━━━━━━\n"
+                for i, ticket in enumerate(group, 1):
+                    address = ticket.get('address', 'Адрес не указан')
+                    problem = ticket.get('problem_description', '')
+                    problem_short = problem[:50] + '...' if len(problem) > 50 else problem
+                    created_at = ticket.get('created_at', '')
+                    time_str = created_at[11:16] if created_at else ''
+                    message += f"{i}. *{address}*"
+                    if time_str:
+                        message += f" 🕐 {time_str}"
+                    message += f"\n   📝 {problem_short}\n\n"
+
         try:
-            await bot.send_message(
-                chat_id=telegram_chat_id,
-                text=message,
-                parse_mode='Markdown',
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-            
+            send_message(max_chat_id, message)
             for ticket in completed_tickets:
-                await _send_completed_ticket_with_photo(bot, telegram_chat_id, ticket)
-            
+                await _send_completed_ticket_with_photo(max_chat_id, ticket)
             print(f"✅ Отправлена сводка механику {mechanic['name']}: {len(tickets)} заявок")
         except Exception as e:
             print(f"❌ Не удалось отправить {mechanic['name']}: {e}")
 
 
-async def _send_completed_ticket_with_photo(bot, telegram_chat_id, ticket):
+async def _send_completed_ticket_with_photo(max_chat_id, ticket):
     """Отправка выполненной заявки с фото"""
     ticket_id = ticket.get('id')
     address = ticket.get('address', 'Адрес не указан')
     problem = ticket.get('problem_description', '')
     problem_short = problem[:50] + '...' if len(problem) > 50 else problem
     created_at = ticket.get('created_at', '')
-    if created_at:
-        try:
-            created_at = created_at[11:16]
-        except:
-            created_at = ''
-    
+    time_str = created_at[11:16] if created_at else ''
+
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
-        
+
         cursor.execute(
-            "SELECT text FROM comments WHERE ticket_id = ? AND author = 'mechanic' AND text LIKE '[ФОТО]%'",
+            "SELECT text FROM comments WHERE ticket_id = %s AND author = 'mechanic' AND text LIKE '[ФОТО]%%'",
             (ticket_id,)
         )
         photos = [row[0].replace('[ФОТО] ', '') for row in cursor.fetchall()]
-        
+
         cursor.execute(
-            "SELECT text FROM comments WHERE ticket_id = ? AND author = 'mechanic' AND text LIKE '📝%'",
+            "SELECT text FROM comments WHERE ticket_id = %s AND author = 'mechanic' AND text LIKE '📝%%'",
             (ticket_id,)
         )
         work_texts = [row[0].replace('📝 ', '') for row in cursor.fetchall()]
         work_text = '\n'.join(work_texts) if work_texts else ''
-        conn.close()
-        
+
         msg = f"✅ *{address}*"
-        if created_at:
-            msg += f" 🕐 {created_at}"
+        if time_str:
+            msg += f" 🕐 {time_str}"
         msg += f"\n📝 {problem_short}"
         if work_text:
             msg += f"\n🔧 {work_text[:200]}"
             if len(work_text) > 200:
                 msg += "..."
-        
+
         if photos:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
             photo_path = photos[0]
-            full_path = f"/Users/swiftpanaev/KIRO/test4/{photo_path}"
+            full_path = os.path.join(base_dir, photo_path.lstrip('/'))
             try:
                 thumb = create_thumbnail(full_path)
                 if thumb:
-                    await bot.send_photo(
-                        chat_id=telegram_chat_id,
-                        photo=thumb,
-                        caption=msg,
-                        filename="photo.jpg"
-                    )
+                    send_message_with_photo(max_chat_id, msg, None, full_path)
                     return
             except Exception as e:
                 print(f"⚠️ Ошибка отправки фото {photo_path}: {e}")
-        
-        await bot.send_message(
-            chat_id=telegram_chat_id,
-            text=msg,
-            parse_mode='Markdown'
-        )
+
+        send_message(max_chat_id, msg)
     except Exception as e:
         print(f"⚠️ Ошибка получения данных о заявке {ticket_id}: {e}")
 
@@ -282,6 +283,12 @@ async def notify_mechanics_about_ticket(ticket_id):
     
     Аварийный механик получает все заявки всегда
     """
+    # Проверяем настройки уведомлений
+    notify_linear = db.get_setting('notification_linear', 'true') == 'true'
+    notify_oncall = db.get_setting('notification_oncall', 'true') == 'true'
+    
+    print(f"DEBUG: notification_linear={notify_linear}, notification_oncall={notify_oncall}")
+    
     ticket = db.get_ticket(ticket_id)
     if not ticket:
         print(f"❌ Заявка {ticket_id} не найдена")
@@ -310,22 +317,24 @@ async def notify_mechanics_about_ticket(ticket_id):
         mechanics = []
         print(f"ℹ️ Нет закрепленных механиков для лифта {elevator_id}")
     
-    # Фильтруем: линейные механики получают только в рабочее время
-    if is_working_hours and is_working_day:
+    linear_mechanics = []
+    
+    # Фильтруем: линейные механики получают только в рабочее время и если включена настройка
+    if notify_linear and is_working_hours and is_working_day:
         # Рабочее время - отправляем всем линейным
         linear_mechanics = mechanics
         print(f"ℹ️ Рабочее время - отправляем линейным механикам: {[m['name'] for m in linear_mechanics]}")
     else:
-        # Не рабочее время - не отправляем линейным
-        linear_mechanics = []
+        if not notify_linear:
+            print(f"ℹ️ Уведомления линейным отключены в настройках")
         if not is_working_hours:
             print(f"ℹ️ Не рабочее время (сейчас {hour}:00) - линейные механики не получат заявку")
         if not is_working_day:
             print(f"ℹ️ Выходной день - линейные механики не получат заявку")
     
-    # 2. АВАРИЙНЫЙ МЕХАНИК получает ВСЕГДА (если не низкий приоритет)
+    # 2. АВАРИЙНЫЙ МЕХАНИК получает ВСЕГДА (если не низкий приоритет и включена настройка)
     oncall_mechanic = None
-    if ticket.get('priority') != 'низкий':
+    if notify_oncall and ticket.get('priority') != 'низкий':
         try:
             today = datetime.now().strftime('%Y-%m-%d')
             oncall_mechanic = db.get_oncall_mechanic_for_date(today)
@@ -341,11 +350,13 @@ async def notify_mechanics_about_ticket(ticket_id):
                     linear_mechanics.append(oncall_mechanic)
         except Exception as e:
             print(f"⚠️ Ошибка получения аварийного механика: {e}")
+    elif not notify_oncall:
+        print(f"ℹ️ Уведомления аварийному отключены в настройках")
     
     # ВСЕГДА отправляем хотя бы аварийному (если есть приоритет и есть аварийный)
     if not linear_mechanics:
         # Пробуем получить аварийного еще раз (вне зависимости от времени)
-        if ticket.get('priority') != 'низкий':
+        if notify_oncall and ticket.get('priority') != 'низкий':
             try:
                 today = datetime.now().strftime('%Y-%m-%d')
                 oncall_mechanic = db.get_oncall_mechanic_for_date(today)
@@ -364,17 +375,36 @@ async def notify_mechanics_about_ticket(ticket_id):
     # Отправляем уведомление каждому механику
     sent_count = 0
     for mechanic in linear_mechanics:
-        telegram_chat_id = mechanic.get('telegram_chat_id')
-        if telegram_chat_id:
-            success = await send_ticket_to_mechanic(ticket_id, telegram_chat_id)
-            if success:
+        max_chat_id = mechanic.get('max_chat_id')
+        if max_chat_id:
+            # Формируем текст сообщения
+            ticket = db.get_ticket(ticket_id)
+            msg = format_ticket_message(ticket, include_photo=False)
+            
+            # Пробуем отправить фото подъезда
+            elevator_id = ticket.get('elevator_id')
+            photo_url = None
+            if elevator_id:
+                elevator = db.get_elevator(elevator_id)
+                if elevator and elevator.get('key_photo'):
+                    photo_url = elevator['key_photo']
+                    print(f"📷 Фото подъезда для заявки {ticket_id}: {photo_url}")
+                else:
+                    print(f"⚠️ Нет фото для лифта {elevator_id}")
+            else:
+                print(f"⚠️ Заявка {ticket_id} без elevator_id")
+            
+            # Отправляем через Max API
+            result = send_message_with_photo(max_chat_id, msg, get_ticket_keyboard(ticket_id, 'new'), photo_url)
+            
+            if result and 'error' not in result:
                 sent_count += 1
                 db.send_ticket_to_mechanic(ticket_id, mechanic['id'])
                 print(f"✅ Отправлено механику {mechanic['name']}")
             else:
-                print(f"❌ Не удалось отправить механику {mechanic['name']}")
+                print(f"❌ Не удалось отправить механику {mechanic['name']}: {result}")
         else:
-            print(f"⚠️ Механик {mechanic['name']} не привязал Telegram")
+            print(f"⚠️ Механик {mechanic['name']} не привязал Max")
     
     print(f"\n📊 Отправлено {sent_count}/{len(linear_mechanics)} механикам")
     return sent_count > 0
@@ -394,14 +424,23 @@ async def notify_mechanics_about_ticket(ticket_id):
 
 async def notify_ticket_completed(ticket_id):
     """Уведомление всех участников о завершении заявки оператором"""
-    from telegram_bot import notify_all_mechanics_about_completion
+    from max_bot import send_message, get_main_keyboard, get_ticket_keyboard
     
     ticket = db.get_ticket(ticket_id)
     if not ticket:
         return False
     
     try:
-        await notify_all_mechanics_about_completion(ticket_id, "Оператор")
+        # Уведомляем механика о завершении заявки оператором
+        assigned_to = ticket.get('assigned_to')
+        if assigned_to:
+            mechanic = db.get_mechanic(assigned_to)
+            if mechanic and mechanic.get('max_chat_id'):
+                send_message(
+                    mechanic['max_chat_id'],
+                    f"✅ Заявка #{ticket.get('ticket_number', ticket_id)} завершена оператором!",
+                    get_main_keyboard()
+                )
         return True
     except Exception as e:
         print(f"❌ Ошибка уведомления о завершении: {e}")
@@ -410,8 +449,8 @@ async def notify_ticket_completed(ticket_id):
 
 if __name__ == "__main__":
     # Тест отправки
-    if BOT_TOKEN == "ВАШ_ТОКЕН_БОТА":
-        print("❌ Укажите BOT_TOKEN в telegram_bot.py")
+    if not os.getenv('MAX_BOT_TOKEN'):
+        print("❌ Укажите MAX_BOT_TOKEN в переменных окружения")
     else:
         # Отправить заявку #1 всем механикам
         asyncio.run(notify_mechanics_about_ticket(1))
